@@ -1,19 +1,34 @@
 # Workflow Mapper
 
-Interactive workflow mapping tool — map any process with **Actors, Steps, Decisions, Tools, and Systems**, housed inside draggable **Screens**, connected by typed, directional edges.
+Interactive workflow mapping tool — map any process with **Actors, Steps, Decisions, Tools, and Systems**, housed inside **Screens**, connected by typed, directional edges. Direct-manipulation canvas: pick a tool, click to place, drag to connect.
 
-Built in the same style/engine as the Wireflow wiring-diagram tool (dark v0/Vercel aesthetic).
+## Controls
+
+| Action | How |
+|---|---|
+| Select tool | `V` |
+| Hand / pan tool | `H` |
+| Pan | Hold **Space** and drag, the Hand tool, middle-mouse drag, or just scroll |
+| Zoom | `⌘`/`Ctrl` + scroll (zooms to the cursor), or the `+` / `−` buttons |
+| Zoom to fit | Click the zoom percentage, or the fit button |
+| Add a node | Pick a node type in the left rail (`1`–`5`), then click the canvas — it drops there and you type the name immediately |
+| Add a screen | Screen tool (`S`), then drag out a rectangle |
+| Connect two nodes | Hover a node, drag one of its four dots onto another node |
+| Rename | Double-click a node or a screen title |
+| Delete | Select, then `Delete` / `Backspace` |
+| Undo / redo | `⌘Z` / `⇧⌘Z` |
+| Cancel | `Escape` |
 
 ## Features
 
-- **5 node types** — Actor (cyan), Step (indigo), Decision (amber, dashed), Tool (green), System (violet), each with its own icon and glow
-- **6 edge types** — Sequence, Yes, No, Data (dashed), Uses (dotted), Handoff — all with directional arrowheads; click a type in the header to highlight that flow
-- **Screens** — group boxes that house nodes; drag a screen header to move it with everything inside; add/rename/delete screens from the Edit panel
-- **Edit mode** — add/edit/delete nodes, edges, and screens
+- **5 node types** — Actor, Step, Decision (dashed), Tool, System, each with its own icon and colour
+- **6 edge types** — Sequence, Yes, No, Data (dashed), Uses (dotted), Handoff, all with directional arrowheads that stop cleanly at the node border. Pick the type for the next edge in the top bar, or change any edge's type from the inspector.
+- **Screens are frames** — drag a screen header to move it and everything inside; drag its corner to resize. Nodes are assigned to whichever screen they're dropped into, automatically — there is no screen dropdown to maintain.
+- **Inspector** — the right panel shows properties for whatever is selected (node, edge, or screen), and nothing else.
+- **Light and dark** — light by default, toggle in the top bar.
 - **Auto-save** — the whole map persists in your browser (localStorage) automatically
 - **Import / Export** — JSON import via the header button; export PNG, SVG, Mermaid, or JSON
 - **Mermaid import** — paste `graph LR` syntax to generate a map (decision `{...}` nodes, subgraphs → screens)
-- **Zoom & pan** — Ctrl+Scroll to zoom, Alt+Drag or middle-click to pan
 
 ## Templates
 

@@ -1,9 +1,5 @@
-import WorkflowDiagram from "@/components/workflow-diagram"
+import WorkflowCanvas from "@/components/workflow-canvas"
 
 export default function Home() {
-  return (
-    <main className="min-h-screen bg-background">
-      <WorkflowDiagram />
-    </main>
-  )
+  return <WorkflowCanvas />
 }

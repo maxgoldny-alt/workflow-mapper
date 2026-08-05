@@ -37,23 +37,28 @@ export interface DiagramTemplate {
   screens: Screen[]
 }
 
-// Single source of truth for node type metadata
-export const NODE_TYPE_META: Record<NodeType, { label: string; color: string }> = {
-  actor: { label: "Actor", color: "#22d3ee" },
-  step: { label: "Step", color: "#818cf8" },
-  decision: { label: "Decision", color: "#fbbf24" },
-  tool: { label: "Tool", color: "#4ade80" },
-  system: { label: "System", color: "#a78bfa" },
+// Fixed node geometry — shared by rendering, hit-testing, edge anchoring, and export
+export const NODE_W = 132
+export const NODE_H = 88
+
+// Single source of truth for node type metadata. Colors are mid-tone on purpose:
+// saturated enough to read on a light canvas, bright enough to read on a dark one.
+export const NODE_TYPE_META: Record<NodeType, { label: string; color: string; shortcut: string }> = {
+  actor: { label: "Actor", color: "#0891b2", shortcut: "1" },
+  step: { label: "Step", color: "#4f46e5", shortcut: "2" },
+  decision: { label: "Decision", color: "#d97706", shortcut: "3" },
+  tool: { label: "Tool", color: "#059669", shortcut: "4" },
+  system: { label: "System", color: "#7c3aed", shortcut: "5" },
 }
 
 // Single source of truth for edge type metadata
 export const EDGE_TYPE_META: Record<EdgeType, { label: string; color: string; dash?: string }> = {
-  sequence: { label: "Sequence", color: "#60a5fa" },
-  yes: { label: "Yes", color: "#4ade80" },
-  no: { label: "No", color: "#f87171" },
-  data: { label: "Data", color: "#22d3ee", dash: "8 4" },
-  uses: { label: "Uses", color: "#a78bfa", dash: "3 4" },
-  handoff: { label: "Handoff", color: "#facc15" },
+  sequence: { label: "Sequence", color: "#2563eb" },
+  yes: { label: "Yes", color: "#059669" },
+  no: { label: "No", color: "#dc2626" },
+  data: { label: "Data", color: "#0891b2", dash: "8 4" },
+  uses: { label: "Uses", color: "#7c3aed", dash: "2 4" },
+  handoff: { label: "Handoff", color: "#d97706" },
 }
 
 export const NODE_TYPES = Object.keys(NODE_TYPE_META) as NodeType[]

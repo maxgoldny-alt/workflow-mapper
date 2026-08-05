@@ -1,17 +1,24 @@
 "use client"
 
-import { useState, type RefObject } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Download, Copy, Check, ImageIcon, FileCode } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { NODE_TYPE_META, EDGE_TYPE_META, type Node, type Connection, type Screen } from "@/lib/diagram-templates"
+import {
+  NODE_TYPE_META,
+  EDGE_TYPE_META,
+  NODE_W,
+  NODE_H,
+  type Node,
+  type Connection,
+  type Screen,
+} from "@/lib/diagram-templates"
 
 interface ExportDialogProps {
   nodes: Node[]
   connections: Connection[]
   screens: Screen[]
-  diagramRef: RefObject<HTMLDivElement | null>
 }
 
 const getIconPaths = (type: string, color: string): string => {
@@ -98,8 +105,8 @@ function generateJSON(nodes: Node[], connections: Connection[], screens: Screen[
 }
 
 function generateSVG(nodes: Node[], connections: Connection[], screens: Screen[]): string {
-  const NODE_WIDTH = 120
-  const NODE_HEIGHT = 70
+  const NODE_WIDTH = NODE_W
+  const NODE_HEIGHT = NODE_H
   const PADDING = 50
 
   // SVG attribute names (using variables to prevent auto-fix from converting to camelCase)
@@ -228,7 +235,7 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&#039;")
 }
 
-export function ExportDialog({ nodes, connections, screens, diagramRef }: ExportDialogProps) {
+export function ExportDialog({ nodes, connections, screens }: ExportDialogProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
