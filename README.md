@@ -30,11 +30,10 @@ npm run dev
 
 ## Deploying to Vercel
 
-This app lives in the `workflow-mapper/` subdirectory of the repo, so when you
-import the project on Vercel set **Root Directory** to `workflow-mapper`.
-Everything else is auto-detected (Next.js framework preset, `npm run build`).
-There are no environment variables or backend services to configure — the app
-stores workflows in the browser's localStorage.
+Import this repo on Vercel and accept the defaults — the Next.js preset and
+`npm run build` are auto-detected, and the app sits at the repo root, so there
+is no Root Directory to change. There are no environment variables or backend
+services to configure; workflows are stored in the browser's localStorage.
 
 ## Tech Stack
 
