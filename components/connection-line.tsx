@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { EDGE_TYPE_META, type Connection, type Node } from "@/lib/diagram-templates"
-import { edgeAnchors, edgePath } from "@/lib/geometry"
+import { edgePath, nodeCenter, arrowAt } from "@/lib/geometry"
 
 interface ConnectionLineProps {
   connection: Connection
@@ -10,16 +10,16 @@ interface ConnectionLineProps {
   to: Node
   isSelected: boolean
   isDimmed: boolean
+  animate: boolean
   onSelect: (e: React.MouseEvent) => void
 }
 
-export function ConnectionLine({ connection, from, to, isSelected, isDimmed, onSelect }: ConnectionLineProps) {
+export function ConnectionLine({ connection, from, to, isSelected, isDimmed, animate, onSelect }: ConnectionLineProps) {
   const meta = EDGE_TYPE_META[connection.type] || EDGE_TYPE_META.sequence
-  const { start, end } = edgeAnchors(from, to)
+  const start = nodeCenter(from)
+  const end = nodeCenter(to)
   const d = edgePath(start, end)
-
-  const midX = (start.x + end.x) / 2
-  const midY = (start.y + end.y) / 2
+  const arrow = arrowAt(start, end, to)
 
   const width = connection.lineStyle === "thick" ? 3 : 2
   const dash = connection.lineStyle === "dotted" ? "3 4" : meta.dash
@@ -38,40 +38,37 @@ export function ConnectionLine({ connection, from, to, isSelected, isDimmed, onS
 
       {isSelected && <path d={d} fill="none" stroke={meta.color} strokeWidth={width + 6} strokeOpacity={0.25} />}
 
+      {/* The line runs center-to-center and disappears under the node body */}
       <path
         d={d}
         fill="none"
         stroke={meta.color}
         strokeWidth={isSelected ? width + 1 : width}
         strokeDasharray={dash}
-        markerEnd={`url(#arrow-${connection.type})`}
         style={{ pointerEvents: "none" }}
       />
 
-      {connection.label && (
-        <g style={{ pointerEvents: "none" }}>
-          <rect
-            x={midX - connection.label.length * 3.3 - 6}
-            y={midY - 9}
-            width={connection.label.length * 6.6 + 12}
-            height={18}
-            rx={9}
-            className="fill-card"
-            stroke={meta.color}
-            strokeOpacity={isSelected ? 0.9 : 0.35}
-          />
-          <text
-            x={midX}
-            y={midY}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize="10"
-            className="fill-foreground"
-          >
-            {connection.label}
-          </text>
-        </g>
+      {/* Dashes travelling toward the target read as direction of flow */}
+      {animate && (
+        <path
+          d={d}
+          fill="none"
+          stroke={meta.color}
+          strokeWidth={width + 0.5}
+          strokeDasharray="1 14"
+          strokeLinecap="round"
+          className="animate-edge-flow"
+          style={{ pointerEvents: "none" }}
+        />
       )}
+
+      {/* Arrowhead sits on the target's border so it stays visible */}
+      <polygon
+        points="0,-4 9,0 0,4"
+        fill={meta.color}
+        transform={`translate(${arrow.x}, ${arrow.y}) rotate(${arrow.angle})`}
+        style={{ pointerEvents: "none" }}
+      />
     </g>
   )
 }

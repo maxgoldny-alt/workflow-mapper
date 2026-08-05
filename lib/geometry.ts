@@ -7,44 +7,89 @@ export interface Point {
 
 export const nodeCenter = (n: Node): Point => ({ x: n.x + NODE_W / 2, y: n.y + NODE_H / 2 })
 
-/**
- * Point on the border of a node's rectangle, on the ray from its center toward `toward`.
- * Used so edges start and stop at the node edge instead of burying their arrowheads
- * under the node body.
- */
-export function borderPoint(node: Node, toward: Point, pad = 4): Point {
-  const c = nodeCenter(node)
-  const dx = toward.x - c.x
-  const dy = toward.y - c.y
-
-  if (dx === 0 && dy === 0) return c
-
-  const halfW = NODE_W / 2 + pad
-  const halfH = NODE_H / 2 + pad
-
-  // Scale the direction vector until it hits whichever edge it reaches first
-  const scaleX = dx === 0 ? Number.POSITIVE_INFINITY : halfW / Math.abs(dx)
-  const scaleY = dy === 0 ? Number.POSITIVE_INFINITY : halfH / Math.abs(dy)
-  const scale = Math.min(scaleX, scaleY)
-
-  return { x: c.x + dx * scale, y: c.y + dy * scale }
-}
-
-/** Anchor points for an edge drawn between two nodes. */
-export function edgeAnchors(from: Node, to: Node): { start: Point; end: Point } {
-  return {
-    start: borderPoint(from, nodeCenter(to)),
-    end: borderPoint(to, nodeCenter(from)),
-  }
-}
-
-/** Horizontally-biased bezier, which reads as flow direction on a left-to-right map. */
-export function edgePath(start: Point, end: Point): string {
+/** Control points for the horizontally-biased bezier used by every edge. */
+function controls(start: Point, end: Point): [Point, Point] {
   const dx = end.x - start.x
   const dy = end.y - start.y
   // Straight-ish for near-vertical pairs, curved for horizontal runs
   const bend = Math.max(Math.abs(dx) * 0.4, Math.abs(dy) > Math.abs(dx) ? 0 : 24)
-  return `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`
+  return [
+    { x: start.x + bend, y: start.y },
+    { x: end.x - bend, y: end.y },
+  ]
+}
+
+function cubicAt(start: Point, end: Point, t: number): Point {
+  const [c1, c2] = controls(start, end)
+  const u = 1 - t
+  const a = u * u * u
+  const b = 3 * u * u * t
+  const c = 3 * u * t * t
+  const d = t * t * t
+  return {
+    x: a * start.x + b * c1.x + c * c2.x + d * end.x,
+    y: a * start.y + b * c1.y + c * c2.y + d * end.y,
+  }
+}
+
+const insideRect = (p: Point, n: Node, pad: number) =>
+  p.x >= n.x - pad && p.x <= n.x + NODE_W + pad && p.y >= n.y - pad && p.y <= n.y + NODE_H + pad
+
+/**
+ * Edges run center-to-center, so the line visually tucks under the node body.
+ */
+export function edgePath(start: Point, end: Point): string {
+  const [c1, c2] = controls(start, end)
+  return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
+}
+
+/** Label anchor — the true midpoint of the curve, not of the chord. */
+export function edgeMidpoint(start: Point, end: Point): Point {
+  return cubicAt(start, end, 0.5)
+}
+
+/**
+ * Anchor for an edge's label: the midpoint of the span that is actually visible
+ * between the two nodes. Because edges run center-to-center, the geometric
+ * midpoint of a short edge can fall inside a node — this keeps labels in the gap.
+ */
+export function edgeLabelPoint(start: Point, end: Point, from: Node, to: Node): Point {
+  const STEPS = 48
+  let tExit = 0
+  let tEnter = 1
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS
+    if (insideRect(cubicAt(start, end, t), from, 0)) tExit = t
+    else break
+  }
+  for (let i = STEPS; i >= 0; i--) {
+    const t = i / STEPS
+    if (insideRect(cubicAt(start, end, t), to, 0)) tEnter = t
+    else break
+  }
+  if (tEnter <= tExit) return cubicAt(start, end, 0.5)
+  return cubicAt(start, end, (tExit + tEnter) / 2)
+}
+
+/**
+ * Where the curve crosses the target node's border, plus the direction of travel
+ * there — so an arrowhead can sit on the edge of the node even though the line
+ * itself continues to the center underneath it.
+ */
+export function arrowAt(start: Point, end: Point, target: Node, pad = 3): { x: number; y: number; angle: number } {
+  const STEPS = 64
+  let t = 0.5
+  // Walk back from the node center until we step outside the node's box
+  for (let i = STEPS; i >= 0; i--) {
+    const tt = i / STEPS
+    if (!insideRect(cubicAt(start, end, tt), target, pad)) {
+      t = tt
+      break
+    }
+  }
+  const p = cubicAt(start, end, t)
+  const ahead = cubicAt(start, end, Math.min(1, t + 0.02))
+  return { x: p.x, y: p.y, angle: (Math.atan2(ahead.y - p.y, ahead.x - p.x) * 180) / Math.PI }
 }
 
 export function nodeAtPoint(nodes: Node[], p: Point): Node | undefined {

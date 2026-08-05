@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   NODE_TYPE_META,
   EDGE_TYPE_META,
@@ -15,6 +16,7 @@ import {
   type Screen,
   type NodeType,
   type EdgeType,
+  type DiagramTemplate,
 } from "@/lib/diagram-templates"
 import { nodeIcons } from "./toolbar"
 
@@ -29,6 +31,11 @@ interface InspectorProps {
   nodes: Node[]
   connections: Connection[]
   screens: Screen[]
+  workflowName: string
+  templates: DiagramTemplate[]
+  onRenameWorkflow: (name: string) => void
+  onDeleteWorkflow: () => void
+  onLoadTemplate: (templateId: string) => void
   onUpdateNode: (nodeId: string, updates: Partial<Node>) => void
   onDeleteNode: (nodeId: string) => void
   onUpdateConnection: (index: number, updates: Partial<Connection>) => void
@@ -42,6 +49,11 @@ export function Inspector({
   nodes,
   connections,
   screens,
+  workflowName,
+  templates,
+  onRenameWorkflow,
+  onDeleteWorkflow,
+  onLoadTemplate,
   onUpdateNode,
   onDeleteNode,
   onUpdateConnection,
@@ -57,19 +69,49 @@ export function Inspector({
     <aside className="flex w-64 shrink-0 flex-col border-l border-border bg-card">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">
-          {node ? "Node" : edge ? "Edge" : screen ? "Screen" : "Properties"}
+          {node ? "Node" : edge ? "Edge" : screen ? "Screen" : "Workflow"}
         </h2>
       </div>
 
       <div className="flex-1 space-y-4 overflow-auto p-4">
         {!selection && (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Select something on the canvas to edit it.
-            <br />
-            <br />
-            Double-click a node or screen title to rename it in place. Drag a dot on a node&apos;s edge to connect it to
-            another node.
-          </p>
+          <>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Name</Label>
+              <Input
+                value={workflowName}
+                onChange={(e) => onRenameWorkflow(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Start from a template</Label>
+              <Select value="" onValueChange={onLoadTemplate}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Replace contents…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Replaces everything on this canvas.</p>
+            </div>
+
+            <p className="border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+              Select something on the canvas to edit it. Double-click a node, screen title, or edge label to rename it
+              in place. Drag a dot on a node&apos;s edge to connect it to another node.
+            </p>
+
+            <Button variant="destructive" size="sm" className="w-full" onClick={onDeleteWorkflow}>
+              <Trash2 className="mr-2 h-3 w-3" />
+              Delete this workflow
+            </Button>
+          </>
         )}
 
         {node && (

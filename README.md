@@ -14,7 +14,8 @@ Interactive workflow mapping tool — map any process with **Actors, Steps, Deci
 | Add a node | Pick a node type in the left rail (`1`–`5`), then click the canvas — it drops there and you type the name immediately |
 | Add a screen | Screen tool (`S`), then drag out a rectangle |
 | Connect two nodes | Hover a node, drag one of its four dots onto another node |
-| Rename | Double-click a node or a screen title |
+| Rename | Double-click a node, a screen title, or an edge label |
+| New workflow | The `＋` button in the top bar, or "New workflow" in the workflow picker |
 | Delete | Select, then `Delete` / `Backspace` |
 | Undo / redo | `⌘Z` / `⇧⌘Z` |
 | Cancel | `Escape` |
@@ -22,13 +23,15 @@ Interactive workflow mapping tool — map any process with **Actors, Steps, Deci
 ## Features
 
 - **5 node types** — Actor, Step, Decision (dashed), Tool, System, each with its own icon and colour
-- **6 edge types** — Sequence, Yes, No, Data (dashed), Uses (dotted), Handoff, all with directional arrowheads that stop cleanly at the node border. Pick the type for the next edge in the top bar, or change any edge's type from the inspector.
+- **6 edge types** — Sequence, Yes, No, Data (dashed), Uses (dotted), Handoff. Lines run into the node centre and tuck under the node body, with the arrowhead resting on the border so it stays visible. Pick the type for the next edge in the top bar, or change any edge's type from the inspector.
+- **Edge labels** — a new edge is labelled with its type automatically (a Data edge reads "Data"), so a map is readable without clicking anything. Labels sit in the open gap between nodes; double-click one to edit, or use "+ label" on a selected unlabelled edge.
+- **Flowing motion** — dashes travel along each edge in the direction of flow. Toggle with **Motion** in the status bar; it also respects `prefers-reduced-motion`.
+- **Multiple workflows** — keep as many maps as you like, switch between them in the top-bar picker, and rename or delete the current one from the inspector when nothing is selected.
 - **Screens are frames** — drag a screen header to move it and everything inside; drag its corner to resize. Nodes are assigned to whichever screen they're dropped into, automatically — there is no screen dropdown to maintain.
-- **Inspector** — the right panel shows properties for whatever is selected (node, edge, or screen), and nothing else.
+- **Inspector** — the right panel shows properties for whatever is selected (node, edge, or screen), and the workflow itself when nothing is.
 - **Light and dark** — light by default, toggle in the top bar.
-- **Auto-save** — the whole map persists in your browser (localStorage) automatically
-- **Import / Export** — JSON import via the header button; export PNG, SVG, Mermaid, or JSON
-- **Mermaid import** — paste `graph LR` syntax to generate a map (decision `{...}` nodes, subgraphs → screens)
+- **Auto-save** — every workflow persists in your browser (localStorage) automatically
+- **Import / Export** — JSON import via the header button (lands as a new workflow); export PNG, SVG, Mermaid, or JSON
 
 ## Templates
 
