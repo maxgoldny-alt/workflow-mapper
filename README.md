@@ -1,43 +1,53 @@
 # Workflow Mapper
 
-Interactive workflow mapping tool — map any process with **Actors, Steps, Decisions, Tools, and Systems**, housed inside **Screens**, connected by typed, directional edges. Direct-manipulation canvas: pick a tool, click to place, drag to connect.
+Map who does what, how work is handed off, and how data actually moves today.
+
+Every **actor** is a swimlane. **Steps, decisions, tools, systems, and notes** sit in the lane of whoever owns them. Any edge that crosses from one lane into another is a **handoff**, and every edge records the **mechanism** it runs on right now: manual, email, chat, spreadsheet, API available, API wired, or automated. The handoff table at the bottom lists every lane crossing, most manual first, so the "what should we automate" list writes itself.
 
 ## Controls
 
 | Action | How |
 |---|---|
 | Select tool | `V` |
-| Hand / pan tool | `H` |
-| Pan | Hold **Space** and drag, the Hand tool, middle-mouse drag, or just scroll |
-| Zoom | `⌘`/`Ctrl` + scroll (zooms to the cursor), or the `+` / `−` buttons |
+| Hand / pan tool | `H`, or hold **Space** and drag, middle-mouse drag, or scroll |
+| Zoom | `Ctrl` + scroll (zooms to the cursor), or the `+` / `−` buttons |
 | Zoom to fit | Click the zoom percentage, or the fit button |
-| Add a node | Pick a node type in the left rail (`1`–`5`), then click the canvas — it drops there and you type the name immediately |
-| Add a screen | Screen tool (`S`), then drag out a rectangle |
+| Add a node | Pick a type in the left rail (`1`–`5`), then click the canvas. It lands in the lane under the cursor and you type its name immediately |
+| Add an actor lane | `L`, the lane button in the left rail, or "Add actor lane" in the inspector |
+| Reorder lanes | Drag a lane header up or down, or use Up / Down in the inspector |
+| Resize a lane | Drag the lane's bottom border |
+| Move a step to another actor | Drag it into that lane. Its edges become handoffs automatically |
 | Connect two nodes | Hover a node, drag one of its four dots onto another node |
-| Rename | Double-click a node, a screen title, or an edge label |
-| New workflow | The `＋` button in the top bar, or "New workflow" in the workflow picker |
+| Set how a handoff happens | Select the edge, pick a mechanism, fill in "What moves" |
+| Rename | Double-click a node, a lane header, or an edge label |
 | Delete | Select, then `Delete` / `Backspace` |
-| Undo / redo | `⌘Z` / `⇧⌘Z` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Cancel | `Escape` |
+
+## Model
+
+- **Lane** — one actor: `{ id, actor, height, color }`. Lanes stack top to bottom; position is derived from order.
+- **Node** — `{ id, label, sublabel, notes, type, x, y, lane }`. Types: step, decision, tool, system, note.
+- **Connection** — `{ id, from, to, label, type, mechanism, payload, notes }`. Types: sequence, yes, no, data, uses. Mechanism is how it happens today; payload is what moves.
+- **Handoff** — derived, never stored: an edge whose ends are in different lanes.
+
+Edge colour comes from its type. Dash pattern comes from its mechanism: solid means the data moves on its own, dashed means a person is still carrying it.
 
 ## Features
 
-- **5 node types** — Actor, Step, Decision (dashed), Tool, System, each with its own icon and colour
-- **6 edge types** — Sequence, Yes, No, Data (dashed), Uses (dotted), Handoff. Lines run into the node centre and tuck under the node body, with the arrowhead resting on the border so it stays visible. Pick the type for the next edge in the top bar, or change any edge's type from the inspector.
-- **Edge labels** — a new edge is labelled with its type automatically (a Data edge reads "Data"), so a map is readable without clicking anything. Labels sit in the open gap between nodes; double-click one to edit, or use "+ label" on a selected unlabelled edge.
-- **Flowing motion** — dashes travel along each edge in the direction of flow. Toggle with **Motion** in the status bar; it also respects `prefers-reduced-motion`.
-- **Multiple workflows** — keep as many maps as you like, switch between them in the top-bar picker, and rename or delete the current one from the inspector when nothing is selected.
-- **Screens are frames** — drag a screen header to move it and everything inside; drag its corner to resize. Nodes are assigned to whichever screen they're dropped into, automatically — there is no screen dropdown to maintain.
-- **Inspector** — the right panel shows properties for whatever is selected (node, edge, or screen), and the workflow itself when nothing is.
-- **Light and dark** — light by default, toggle in the top bar.
-- **Auto-save** — every workflow persists in your browser (localStorage) automatically
-- **Import / Export** — JSON import via the header button (lands as a new workflow); export PNG, SVG, Mermaid, or JSON
+- Multiple workflows, switch in the top-bar picker
+- Inspector for the selected node, edge, or lane, or the workflow when nothing is selected
+- Status-bar filters to dim everything except one edge type or one mechanism
+- Handoff table: click a row to select that edge on the board
+- Flowing-motion toggle, light and dark themes
+- Auto-save to localStorage. Saves from the previous version (free-form screens) migrate on first load: each screen becomes a lane
+- Import JSON (old or new format), export PNG, SVG, Mermaid (one subgraph per actor), or JSON
 
 ## Templates
 
-- **Operational Core** — order intake → operations core → delivery, showing every node and edge type
-- **Approval Flow** — basic request/review/approve loop
-- **Empty** — start from scratch
+- **Operational Core** — Customer, Ops Manager, Warehouse, Systems, with a mix of manual and wired handoffs
+- **Approval Flow** — Requester, Manager, Systems
+- **Empty** — one lane, nothing else
 
 ## Development
 
@@ -46,13 +56,12 @@ npm install
 npm run dev
 ```
 
+`npm run lint` and `npx tsc --noEmit` should both be clean.
+
 ## Deploying to Vercel
 
-Import this repo on Vercel and accept the defaults — the Next.js preset and
-`npm run build` are auto-detected, and the app sits at the repo root, so there
-is no Root Directory to change. There are no environment variables or backend
-services to configure; workflows are stored in the browser's localStorage.
+Import this repo on Vercel and accept the defaults. There are no environment variables or backend services; workflows live in the browser's localStorage.
 
-## Tech Stack
+## Tech stack
 
-- Next.js (App Router), Tailwind CSS v4, shadcn/ui, Lucide icons
+Next.js (App Router), React 19, Tailwind CSS v4, shadcn/ui, Lucide icons.

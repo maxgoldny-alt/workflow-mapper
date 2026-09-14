@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { NODE_TYPE_META, NODE_W, NODE_H, type Node } from "@/lib/diagram-templates"
+import { NODE_TYPE_META, NODE_W, NODE_H, type Node } from "@/lib/model"
 import { nodeIcons } from "./toolbar"
+import { InlineEditor } from "./inline-editor"
 
 export type HandleSide = "top" | "right" | "bottom" | "left"
 
@@ -44,22 +44,8 @@ export function DiagramNode({
 }: DiagramNodeProps) {
   const meta = NODE_TYPE_META[node.type]
   const Icon = nodeIcons[node.type]
-  const [draft, setDraft] = useState(node.label)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (isEditing) {
-      setDraft(node.label)
-      // Focus after paint so the click that opened the editor doesn't steal it back
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      })
-    }
-  }, [isEditing, node.label])
-
-  const commit = () => {
-    const next = draft.trim()
+  const isNote = node.type === "note"
+  const commit = (next: string) => {
     if (next && next !== node.label) onCommitLabel(node.id, next)
     else onCancelEditing()
   }
@@ -80,41 +66,46 @@ export function DiagramNode({
     >
       <div
         className={cn(
-          "flex h-full w-full flex-col items-center justify-center gap-1.5 border-2 bg-card px-2 shadow-sm transition-shadow",
-          node.type === "actor" ? "rounded-full" : "rounded-xl",
+          "flex h-full w-full flex-col items-center justify-center gap-1.5 border-2 px-2 shadow-sm transition-shadow",
+          isNote ? "rounded-sm border-transparent" : "rounded-xl bg-card",
           node.type === "decision" && "border-dashed",
         )}
         style={{
-          borderColor: meta.color,
-          backgroundColor: `${meta.color}0f`,
+          borderColor: isNote ? undefined : meta.color,
+          backgroundColor: isNote ? "#fef3c7" : `${meta.color}0f`,
+          color: isNote ? "#713f12" : undefined,
           boxShadow: isSelected || isConnectTarget ? `0 0 0 3px ${meta.color}40` : undefined,
         }}
       >
-        <Icon className="h-5 w-5 shrink-0" style={{ color: meta.color }} />
+        {!isNote && <Icon className="h-5 w-5 shrink-0" style={{ color: meta.color }} />}
 
         {isEditing ? (
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onPointerDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === "Enter") commit()
-              if (e.key === "Escape") onCancelEditing()
-            }}
-            className="w-full rounded border border-border bg-background px-1 text-center text-xs font-medium outline-none"
+          <InlineEditor
+            value={node.label}
+            onCommit={commit}
+            onCancel={onCancelEditing}
+            className="w-full rounded border border-border bg-background px-1 text-center text-xs font-medium text-foreground outline-none"
           />
         ) : (
           <div className="w-full text-center">
-            <div className="truncate text-xs font-medium leading-tight text-foreground">{node.label}</div>
+            <div className={cn("text-xs font-medium leading-tight", isNote ? "line-clamp-2" : "truncate text-foreground")}>
+              {node.label}
+            </div>
             {node.sublabel && (
-              <div className="truncate text-[10px] leading-tight text-muted-foreground">{node.sublabel}</div>
+              <div className={cn("text-[10px] leading-tight", isNote ? "line-clamp-2 opacity-80" : "truncate text-muted-foreground")}>
+                {node.sublabel}
+              </div>
             )}
           </div>
         )}
       </div>
+
+      {node.notes && !isNote && (
+        <span
+          className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-card bg-amber-400"
+          title={node.notes}
+        />
+      )}
 
       {/* Connection handles — drag one onto another node to draw an edge */}
       {interactive &&

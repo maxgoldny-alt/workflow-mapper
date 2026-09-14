@@ -1,4 +1,4 @@
-import { NODE_W, NODE_H, type Node, type Screen } from "./diagram-templates"
+import { NODE_W, NODE_H, LANE_HEADER_W, LANE_MIN_W, type Doc, type Lane, type Node } from "./model"
 
 export interface Point {
   x: number
@@ -35,23 +35,15 @@ function cubicAt(start: Point, end: Point, t: number): Point {
 const insideRect = (p: Point, n: Node, pad: number) =>
   p.x >= n.x - pad && p.x <= n.x + NODE_W + pad && p.y >= n.y - pad && p.y <= n.y + NODE_H + pad
 
-/**
- * Edges run center-to-center, so the line visually tucks under the node body.
- */
+/** Edges run center-to-center, so the line visually tucks under the node body. */
 export function edgePath(start: Point, end: Point): string {
   const [c1, c2] = controls(start, end)
   return `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
 }
 
-/** Label anchor — the true midpoint of the curve, not of the chord. */
-export function edgeMidpoint(start: Point, end: Point): Point {
-  return cubicAt(start, end, 0.5)
-}
-
 /**
  * Anchor for an edge's label: the midpoint of the span that is actually visible
- * between the two nodes. Because edges run center-to-center, the geometric
- * midpoint of a short edge can fall inside a node — this keeps labels in the gap.
+ * between the two nodes, so short edges don't hide their label under a node.
  */
 export function edgeLabelPoint(start: Point, end: Point, from: Node, to: Node): Point {
   const STEPS = 48
@@ -71,15 +63,10 @@ export function edgeLabelPoint(start: Point, end: Point, from: Node, to: Node): 
   return cubicAt(start, end, (tExit + tEnter) / 2)
 }
 
-/**
- * Where the curve crosses the target node's border, plus the direction of travel
- * there — so an arrowhead can sit on the edge of the node even though the line
- * itself continues to the center underneath it.
- */
+/** Where the curve crosses the target node's border, plus the direction of travel there. */
 export function arrowAt(start: Point, end: Point, target: Node, pad = 3): { x: number; y: number; angle: number } {
   const STEPS = 64
   let t = 0.5
-  // Walk back from the node center until we step outside the node's box
   for (let i = STEPS; i >= 0; i--) {
     const tt = i / STEPS
     if (!insideRect(cubicAt(start, end, tt), target, pad)) {
@@ -93,7 +80,6 @@ export function arrowAt(start: Point, end: Point, target: Node, pad = 3): { x: n
 }
 
 export function nodeAtPoint(nodes: Node[], p: Point): Node | undefined {
-  // Reverse order so the visually topmost node wins
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i]
     if (p.x >= n.x && p.x <= n.x + NODE_W && p.y >= n.y && p.y <= n.y + NODE_H) return n
@@ -101,21 +87,42 @@ export function nodeAtPoint(nodes: Node[], p: Point): Node | undefined {
   return undefined
 }
 
-/** The screen that visually contains a node, by its center point. */
-export function screenContaining(screens: Screen[], p: Point): Screen | undefined {
-  for (let i = screens.length - 1; i >= 0; i--) {
-    const s = screens[i]
-    if (p.x >= s.x && p.x <= s.x + s.width && p.y >= s.y && p.y <= s.y + s.height) return s
-  }
-  return undefined
+/* ------------------------------------------------------------------ lanes */
+
+export interface LaneBox extends Lane {
+  top: number
+  bottom: number
 }
 
-/** Normalize a drag rectangle so width/height are always positive. */
-export function normalizeRect(a: Point, b: Point) {
-  return {
-    x: Math.min(a.x, b.x),
-    y: Math.min(a.y, b.y),
-    width: Math.abs(b.x - a.x),
-    height: Math.abs(b.y - a.y),
-  }
+/** Lanes stack from y=0 with no gaps; their vertical position is derived from order. */
+export function laneBoxes(lanes: Lane[]): LaneBox[] {
+  let y = 0
+  return lanes.map((l) => {
+    const box = { ...l, top: y, bottom: y + l.height }
+    y += l.height
+    return box
+  })
+}
+
+export const lanesHeight = (lanes: Lane[]) => lanes.reduce((s, l) => s + l.height, 0)
+
+/** Board width grows with content so there is always room to the right. */
+export const lanesWidth = (doc: Doc) =>
+  Math.max(LANE_MIN_W, ...doc.nodes.map((n) => n.x + NODE_W + 240))
+
+/** The lane whose band contains a y coordinate; clamps to the first/last lane. */
+export function laneAtY(lanes: Lane[], y: number): LaneBox | undefined {
+  const boxes = laneBoxes(lanes)
+  if (!boxes.length) return undefined
+  return boxes.find((b) => y >= b.top && y < b.bottom) ?? (y < 0 ? boxes[0] : boxes[boxes.length - 1])
+}
+
+/** Snap a node into the lane under its center and keep it fully inside that band. */
+export function clampNodeToLane(lanes: Lane[], n: Node): Node {
+  const lane = laneAtY(lanes, n.y + NODE_H / 2)
+  if (!lane) return n
+  const pad = 8
+  const y = Math.min(Math.max(n.y, lane.top + pad), Math.max(lane.top + pad, lane.bottom - NODE_H - pad))
+  const x = Math.max(n.x, LANE_HEADER_W + pad)
+  return { ...n, x, y, lane: lane.id }
 }

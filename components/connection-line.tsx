@@ -1,31 +1,45 @@
 "use client"
 
 import type React from "react"
-import { EDGE_TYPE_META, type Connection, type Node } from "@/lib/diagram-templates"
+import { EDGE_TYPE_META, MECHANISM_META, type Connection, type Node } from "@/lib/model"
 import { edgePath, nodeCenter, arrowAt } from "@/lib/geometry"
 
 interface ConnectionLineProps {
   connection: Connection
   from: Node
   to: Node
+  isHandoff: boolean
   isSelected: boolean
   isDimmed: boolean
   animate: boolean
   onSelect: (e: React.MouseEvent) => void
 }
 
-export function ConnectionLine({ connection, from, to, isSelected, isDimmed, animate, onSelect }: ConnectionLineProps) {
+/**
+ * Edge type sets the colour; mechanism sets the dash. A solid line means the
+ * data moves on its own; a dashed one means a person is still carrying it.
+ * Handoffs (lane-crossing edges) get a faint halo in the mechanism colour.
+ */
+export function ConnectionLine({
+  connection,
+  from,
+  to,
+  isHandoff,
+  isSelected,
+  isDimmed,
+  animate,
+  onSelect,
+}: ConnectionLineProps) {
   const meta = EDGE_TYPE_META[connection.type] || EDGE_TYPE_META.sequence
+  const mech = MECHANISM_META[connection.mechanism] || MECHANISM_META.unknown
   const start = nodeCenter(from)
   const end = nodeCenter(to)
   const d = edgePath(start, end)
   const arrow = arrowAt(start, end, to)
-
-  const width = connection.lineStyle === "thick" ? 3 : 2
-  const dash = connection.lineStyle === "dotted" ? "3 4" : meta.dash
+  const width = isHandoff ? 2.5 : 2
 
   return (
-    <g opacity={isDimmed ? 0.25 : 1}>
+    <g opacity={isDimmed ? 0.2 : 1}>
       {/* Invisible fat stroke so the edge is easy to click */}
       <path
         d={d}
@@ -36,7 +50,15 @@ export function ConnectionLine({ connection, from, to, isSelected, isDimmed, ani
         onClick={onSelect}
       />
 
-      {isSelected && <path d={d} fill="none" stroke={meta.color} strokeWidth={width + 6} strokeOpacity={0.25} />}
+      {(isSelected || isHandoff) && (
+        <path
+          d={d}
+          fill="none"
+          stroke={isSelected ? meta.color : mech.color}
+          strokeWidth={width + 6}
+          strokeOpacity={isSelected ? 0.25 : 0.12}
+        />
+      )}
 
       {/* The line runs center-to-center and disappears under the node body */}
       <path
@@ -44,7 +66,7 @@ export function ConnectionLine({ connection, from, to, isSelected, isDimmed, ani
         fill="none"
         stroke={meta.color}
         strokeWidth={isSelected ? width + 1 : width}
-        strokeDasharray={dash}
+        strokeDasharray={mech.dash}
         style={{ pointerEvents: "none" }}
       />
 
@@ -62,7 +84,6 @@ export function ConnectionLine({ connection, from, to, isSelected, isDimmed, ani
         />
       )}
 
-      {/* Arrowhead sits on the target's border so it stays visible */}
       <polygon
         points="0,-4 9,0 0,4"
         fill={meta.color}

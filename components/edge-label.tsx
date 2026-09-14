@@ -1,15 +1,16 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { EDGE_TYPE_META, type Connection, type Node } from "@/lib/diagram-templates"
+import { EDGE_TYPE_META, MECHANISM_META, type Connection, type Node } from "@/lib/model"
 import { edgeLabelPoint, nodeCenter } from "@/lib/geometry"
+import { mechanismIcons } from "./toolbar"
+import { InlineEditor } from "./inline-editor"
 
 interface EdgeLabelProps {
   connection: Connection
-  index: number
   from: Node
   to: Node
+  isHandoff: boolean
   isSelected: boolean
   isDimmed: boolean
   isEditing: boolean
@@ -20,15 +21,16 @@ interface EdgeLabelProps {
 }
 
 /**
- * Edge labels are HTML, positioned in the open gap between the two nodes rather
- * than at the geometric midpoint — which, now that edges run center-to-center,
- * would often land underneath a node. They paint below the nodes so they can
- * never swallow a drag aimed at a node or its connection handles.
+ * Edge labels are HTML, positioned in the open gap between the two nodes. They
+ * paint below the nodes so they never swallow a drag aimed at a node. Handoffs
+ * always show a pill carrying the mechanism glyph, even when unlabelled, because
+ * "how does this cross the lane" is the whole point of the map.
  */
 export function EdgeLabel({
   connection,
   from,
   to,
+  isHandoff,
   isSelected,
   isDimmed,
   isEditing,
@@ -38,24 +40,13 @@ export function EdgeLabel({
   onCancel,
 }: EdgeLabelProps) {
   const meta = EDGE_TYPE_META[connection.type] || EDGE_TYPE_META.sequence
+  const mech = MECHANISM_META[connection.mechanism] || MECHANISM_META.unknown
+  const MechIcon = mechanismIcons[connection.mechanism] ?? mechanismIcons.unknown
   const mid = edgeLabelPoint(nodeCenter(from), nodeCenter(to), from, to)
-  const [draft, setDraft] = useState(connection.label ?? "")
-  const inputRef = useRef<HTMLInputElement>(null)
+  const showGlyph = isHandoff || connection.mechanism !== "unknown"
+  const text = connection.label || (isHandoff ? mech.short : "")
 
-  useEffect(() => {
-    if (isEditing) {
-      setDraft(connection.label ?? "")
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      })
-    }
-  }, [isEditing, connection.label])
-
-  const commit = () => onCommit(draft.trim())
-
-  if (!connection.label && !isEditing) {
-    // Unlabelled edge: show a small add-affordance only when the edge is selected
+  if (!text && !showGlyph && !isEditing) {
     if (!isSelected) return null
     return (
       <button
@@ -80,17 +71,11 @@ export function EdgeLabel({
       onPointerDown={(e) => e.stopPropagation()}
     >
       {isEditing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            e.stopPropagation()
-            if (e.key === "Enter") commit()
-            if (e.key === "Escape") onCancel()
-          }}
-          className="w-24 rounded-full border bg-card px-2 py-0.5 text-center text-[11px] outline-none"
+        <InlineEditor
+          value={connection.label ?? ""}
+          onCommit={onCommit}
+          onCancel={onCancel}
+          className="w-28 rounded-full border bg-card px-2 py-0.5 text-center text-[11px] outline-none"
           style={{ borderColor: meta.color }}
         />
       ) : (
@@ -105,13 +90,14 @@ export function EdgeLabel({
             onStartEditing()
           }}
           className={cn(
-            "max-w-[140px] truncate rounded-full border bg-card px-2 py-0.5 text-[11px] leading-tight text-foreground shadow-sm",
+            "flex max-w-[170px] items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-[11px] leading-tight text-foreground shadow-sm",
             isSelected ? "font-medium" : "hover:shadow",
           )}
-          style={{ borderColor: meta.color, borderWidth: isSelected ? 2 : 1 }}
-          title="Double-click to edit"
+          style={{ borderColor: isHandoff ? mech.color : meta.color, borderWidth: isSelected ? 2 : 1 }}
+          title={`${mech.label}${connection.payload ? ` · ${connection.payload}` : ""} — double-click to edit label`}
         >
-          {connection.label}
+          {showGlyph && <MechIcon className="h-3 w-3 shrink-0" style={{ color: mech.color }} />}
+          {text && <span className="truncate">{text}</span>}
         </button>
       )}
     </div>

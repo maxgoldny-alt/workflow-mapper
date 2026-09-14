@@ -1,32 +1,54 @@
 "use client"
 
-import { MousePointer2, Hand, User, ListChecks, Diamond, Wrench, Server, Frame } from "lucide-react"
+import {
+  MousePointer2,
+  Hand,
+  ListChecks,
+  Diamond,
+  Wrench,
+  Server,
+  StickyNote,
+  Rows3,
+  HelpCircle,
+  Mail,
+  MessageSquare,
+  Table,
+  Plug,
+  PlugZap,
+  Zap,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
-import { NODE_TYPE_META, NODE_TYPES, type NodeType } from "@/lib/diagram-templates"
+import { NODE_TYPE_META, NODE_TYPES, type Mechanism, type NodeType } from "@/lib/model"
 
-export type Tool = { kind: "select" } | { kind: "hand" } | { kind: "node"; nodeType: NodeType } | { kind: "screen" }
+export type Tool = { kind: "select" } | { kind: "hand" } | { kind: "node"; nodeType: NodeType }
 
-export const nodeIcons: Record<NodeType, typeof User> = {
-  actor: User,
+export const nodeIcons: Record<NodeType, typeof Hand> = {
   step: ListChecks,
   decision: Diamond,
   tool: Wrench,
   system: Server,
+  note: StickyNote,
+}
+
+export const mechanismIcons: Record<Mechanism, typeof Hand> = {
+  unknown: HelpCircle,
+  manual: Hand,
+  email: Mail,
+  chat: MessageSquare,
+  spreadsheet: Table,
+  "api-available": Plug,
+  "api-wired": PlugZap,
+  automated: Zap,
 }
 
 interface ToolbarProps {
   tool: Tool
   onToolChange: (tool: Tool) => void
+  onAddLane: () => void
 }
 
-export function Toolbar({ tool, onToolChange }: ToolbarProps) {
-  const button = (
-    active: boolean,
-    onClick: () => void,
-    Icon: typeof User,
-    title: string,
-    color?: string,
-  ) => (
+export function Toolbar({ tool, onToolChange, onAddLane }: ToolbarProps) {
+  const button = (active: boolean, onClick: () => void, Icon: typeof Hand, title: string, color?: string) => (
     <button
       key={title}
       type="button"
@@ -56,14 +78,14 @@ export function Toolbar({ tool, onToolChange }: ToolbarProps) {
           tool.kind === "node" && tool.nodeType === t,
           () => onToolChange({ kind: "node", nodeType: t }),
           nodeIcons[t],
-          `${NODE_TYPE_META[t].label} — ${NODE_TYPE_META[t].shortcut}`,
+          `${NODE_TYPE_META[t].label} — ${NODE_TYPE_META[t].shortcut} (then click to place)`,
           NODE_TYPE_META[t].color,
         ),
       )}
 
       <div className="my-1 h-px w-8 bg-border" />
 
-      {button(tool.kind === "screen", () => onToolChange({ kind: "screen" }), Frame, "Screen — S (drag to draw)")}
+      {button(false, onAddLane, Rows3, "Add actor lane — L")}
     </div>
   )
 }
