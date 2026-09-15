@@ -126,3 +126,29 @@ export function clampNodeToLane(lanes: Lane[], n: Node): Node {
   const x = Math.max(n.x, LANE_HEADER_W + pad)
   return { ...n, x, y, lane: lane.id }
 }
+
+/* ------------------------------------------------------------- selection */
+
+export const GRID = 8
+
+export const snapNode = (n: Node): Node => ({
+  ...n,
+  x: Math.round(n.x / GRID) * GRID,
+  y: Math.round(n.y / GRID) * GRID,
+})
+
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Normalize a drag rectangle so width/height are always positive. */
+export function normalizeRect(a: Point, b: Point): Rect {
+  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) }
+}
+
+/** Nodes whose box overlaps the rectangle at all. */
+export const nodesInRect = (nodes: Node[], r: Rect) =>
+  nodes.filter((n) => n.x < r.x + r.width && n.x + NODE_W > r.x && n.y < r.y + r.height && n.y + NODE_H > r.y)

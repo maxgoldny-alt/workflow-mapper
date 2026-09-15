@@ -37,17 +37,18 @@ import {
 import { templates, getTemplateById, docFromTemplate } from "@/lib/templates"
 import { loadState, saveState, coerceDoc } from "@/lib/storage"
 import { addLane, moveLane, removeLane, resizeLane } from "@/lib/lane-ops"
-import { nodeAtPoint, laneAtY, laneBoxes, lanesHeight, lanesWidth, clampNodeToLane, edgePath, nodeCenter } from "@/lib/geometry"
+import { nodeAtPoint, laneAtY, laneBoxes, lanesHeight, lanesWidth, clampNodeToLane, edgePath, nodeCenter, snapNode, nodesInRect, normalizeRect } from "@/lib/geometry"
 import { useHistory } from "@/hooks/use-history"
 import { useViewport, MIN_ZOOM, MAX_ZOOM } from "@/hooks/use-viewport"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { ZoomIn, ZoomOut, Maximize2, Upload, Undo2, Redo2, Sun, Moon, Plus, Waves, HelpCircle } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, Upload, Undo2, Redo2, Sun, Moon, Plus, Waves, HelpCircle, Magnet } from "lucide-react"
 
 type Drag =
   | { kind: "pan"; startClient: { x: number; y: number }; startPan: { x: number; y: number } }
-  | { kind: "node"; id: string; offset: { x: number; y: number }; moved: boolean }
+  | { kind: "node"; ids: string[]; last: { x: number; y: number }; moved: boolean }
+  | { kind: "marquee"; start: { x: number; y: number }; current: { x: number; y: number }; additive: boolean }
   | { kind: "lane"; id: string }
   | { kind: "laneResize"; id: string; lastY: number }
   | { kind: "connect"; fromId: string; cursor: { x: number; y: number } }
@@ -68,6 +69,7 @@ export default function WorkflowCanvas() {
   const [highlightType, setHighlightType] = useState<EdgeType | null>(null)
   const [highlightMech, setHighlightMech] = useState<Mechanism | null>(null)
   const [motion, setMotion] = useState(true)
+  const [snap, setSnap] = useState(true)
   const [tableOpen, setTableOpen] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [drag, setDrag] = useState<Drag>(null)
@@ -138,6 +140,17 @@ export default function WorkflowCanvas() {
     setEditingEdge(null)
   }
 
+  /** Ids of every selected node, whether one or many. */
+  const selectedNodeIds = useMemo(
+    () => (selection?.kind === "node" ? [selection.id] : selection?.kind === "nodes" ? selection.ids : []),
+    [selection],
+  )
+  const selectNodes = useCallback(
+    (ids: string[]) =>
+      setSelection(ids.length === 0 ? null : ids.length === 1 ? { kind: "node", id: ids[0] } : { kind: "nodes", ids }),
+    [],
+  )
+
   const onViewportPointerDown = (e: React.PointerEvent) => {
     if (e.button === 1 || panningMode) {
       e.preventDefault()
@@ -164,19 +177,26 @@ export default function WorkflowCanvas() {
       return
     }
 
-    // Empty board click: select the lane under the cursor (or nothing)
-    const lane = laneAtY(doc.lanes, p.y)
-    setSelection(lane && p.y >= 0 && p.y <= boardH ? { kind: "lane", id: lane.id } : null)
+    // Empty board: drag a marquee; a plain click resolves to the lane under the cursor on pointer-up
     clearEditing()
+    setDrag({ kind: "marquee", start: p, current: p, additive: e.shiftKey })
   }
 
   const onNodePointerDown = (e: React.PointerEvent, node: Node) => {
     if (!interactive) return
     e.stopPropagation()
     const p = toCanvas(e.clientX, e.clientY)
-    setSelection({ kind: "node", id: node.id })
+    if (e.shiftKey) {
+      selectNodes(
+        selectedNodeIds.includes(node.id) ? selectedNodeIds.filter((id) => id !== node.id) : [...selectedNodeIds, node.id],
+      )
+      return
+    }
+    // Dragging a node that is part of the current selection moves the whole selection
+    const ids = selectedNodeIds.includes(node.id) ? selectedNodeIds : [node.id]
+    if (ids.length === 1) setSelection({ kind: "node", id: node.id })
     snapshot()
-    setDrag({ kind: "node", id: node.id, offset: { x: p.x - node.x, y: p.y - node.y }, moved: false })
+    setDrag({ kind: "node", ids, last: p, moved: false })
   }
 
   const onStartConnect = (e: React.PointerEvent, node: Node) => {
@@ -211,14 +231,15 @@ export default function WorkflowCanvas() {
       const p = toCanvas(e.clientX, e.clientY)
 
       if (drag.kind === "node") {
-        if (!drag.moved) setDrag({ ...drag, moved: true })
+        const dx = p.x - drag.last.x
+        const dy = p.y - drag.last.y
+        setDrag({ ...drag, last: p, moved: true })
         commit(
-          (d) => ({
-            ...d,
-            nodes: d.nodes.map((n) => (n.id === drag.id ? { ...n, x: p.x - drag.offset.x, y: p.y - drag.offset.y } : n)),
-          }),
+          (d) => ({ ...d, nodes: d.nodes.map((n) => (drag.ids.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)) }),
           false,
         )
+      } else if (drag.kind === "marquee") {
+        setDrag({ ...drag, current: p })
       } else if (drag.kind === "lane") {
         const target = laneAtY(doc.lanes, p.y)
         if (target && target.id !== drag.id) {
@@ -252,8 +273,24 @@ export default function WorkflowCanvas() {
           }
         }
       } else if (drag.kind === "node" && drag.moved) {
-        // Snap into whichever lane now holds the node's center
-        commit((d) => ({ ...d, nodes: d.nodes.map((n) => (n.id === drag.id ? clampNodeToLane(d.lanes, n) : n)) }), false)
+        // Snap to grid, then into whichever lane now holds each node's center
+        commit(
+          (d) => ({
+            ...d,
+            nodes: d.nodes.map((n) => (drag.ids.includes(n.id) ? clampNodeToLane(d.lanes, snap ? snapNode(n) : n) : n)),
+          }),
+          false,
+        )
+      } else if (drag.kind === "marquee") {
+        const rect = normalizeRect(drag.start, drag.current)
+        if (rect.width < 4 && rect.height < 4) {
+          // A click, not a drag: select the lane under the cursor (or nothing)
+          const lane = laneAtY(doc.lanes, p.y)
+          setSelection(lane && p.y >= 0 && p.y <= boardH ? { kind: "lane", id: lane.id } : null)
+        } else {
+          const hit = nodesInRect(doc.nodes, rect).map((n) => n.id)
+          selectNodes(drag.additive ? Array.from(new Set([...selectedNodeIds, ...hit])) : hit)
+        }
       }
       setDrag(null)
     }
@@ -264,7 +301,7 @@ export default function WorkflowCanvas() {
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
     }
-  }, [drag, toCanvas, commit, doc, defaultEdgeType, setPan])
+  }, [drag, toCanvas, commit, doc, defaultEdgeType, setPan, snap, boardH, selectedNodeIds, selectNodes])
 
   const onWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) zoomAt(zoom * (e.deltaY > 0 ? 0.92 : 1.08), e.clientX, e.clientY)
@@ -289,17 +326,18 @@ export default function WorkflowCanvas() {
     [commit],
   )
 
-  const deleteNode = useCallback(
-    (id: string) => {
+  const deleteNodes = useCallback(
+    (ids: string[]) => {
       commit((d) => ({
         ...d,
-        nodes: d.nodes.filter((n) => n.id !== id),
-        connections: d.connections.filter((c) => c.from !== id && c.to !== id),
+        nodes: d.nodes.filter((n) => !ids.includes(n.id)),
+        connections: d.connections.filter((c) => !ids.includes(c.from) && !ids.includes(c.to)),
       }))
       setSelection(null)
     },
     [commit],
   )
+  const deleteNode = useCallback((id: string) => deleteNodes([id]), [deleteNodes])
   const deleteConnection = useCallback(
     (id: string) => {
       commit((d) => ({ ...d, connections: d.connections.filter((c) => c.id !== id) }))
@@ -318,9 +356,24 @@ export default function WorkflowCanvas() {
   const deleteSelection = useCallback(() => {
     if (!selection) return
     if (selection.kind === "node") deleteNode(selection.id)
+    else if (selection.kind === "nodes") deleteNodes(selection.ids)
     else if (selection.kind === "edge") deleteConnection(selection.id)
     else deleteLane(selection.id)
-  }, [selection, deleteNode, deleteConnection, deleteLane])
+  }, [selection, deleteNode, deleteNodes, deleteConnection, deleteLane])
+
+  /** Arrow keys move the selected nodes one grid step (Shift: one pixel). */
+  const nudge = useCallback(
+    (dx: number, dy: number) => {
+      if (!selectedNodeIds.length) return
+      commit((d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => (selectedNodeIds.includes(n.id) ? clampNodeToLane(d.lanes, { ...n, x: n.x + dx, y: n.y + dy }) : n)),
+      }))
+    },
+    [commit, selectedNodeIds],
+  )
+
+  const selectAll = useCallback(() => selectNodes(doc.nodes.map((n) => n.id)), [selectNodes, doc.nodes])
 
   const createLane = useCallback(() => {
     let id = ""
@@ -363,6 +416,18 @@ export default function WorkflowCanvas() {
         else undo()
         return
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault()
+        selectAll()
+        return
+      }
+      const arrow = ARROWS[e.key]
+      if (arrow) {
+        e.preventDefault()
+        const step = e.shiftKey ? 1 : 8
+        nudge(arrow[0] * step, arrow[1] * step)
+        return
+      }
       if (e.key === "Escape") {
         setDrag(null)
         clearEditing()
@@ -394,7 +459,7 @@ export default function WorkflowCanvas() {
       window.removeEventListener("keydown", onKeyDown)
       window.removeEventListener("keyup", onKeyUp)
     }
-  }, [selection, undo, redo, deleteSelection, createLane])
+  }, [selection, undo, redo, deleteSelection, createLane, nudge, selectAll])
 
   /* ---------------------------------------------------------- workflow files */
 
@@ -652,7 +717,7 @@ export default function WorkflowCanvas() {
                 <DiagramNode
                   key={n.id}
                   node={n}
-                  isSelected={selection?.kind === "node" && selection.id === n.id}
+                  isSelected={selectedNodeIds.includes(n.id)}
                   isDimmed={false}
                   isConnectTarget={drag?.kind === "connect" && connectPreview?.targetId === n.id}
                   isEditing={editingId === n.id}
@@ -668,6 +733,8 @@ export default function WorkflowCanvas() {
                 />
               ))}
             </div>
+
+            {drag?.kind === "marquee" && <Marquee rect={normalizeRect(drag.start, drag.current)} zoom={zoom} pan={pan} />}
 
             {loaded && doc.nodes.length === 0 && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -729,6 +796,7 @@ export default function WorkflowCanvas() {
           onAddLane={createLane}
           onUpdateNode={updateNode}
           onDeleteNode={deleteNode}
+          onDeleteNodes={deleteNodes}
           onUpdateConnection={updateConnection}
           onDeleteConnection={deleteConnection}
           onUpdateLane={updateLane}
@@ -753,6 +821,16 @@ export default function WorkflowCanvas() {
           Motion {motion ? "on" : "off"}
         </button>
 
+        <button
+          type="button"
+          onClick={() => setSnap((s) => !s)}
+          className={cn("flex items-center gap-1 rounded px-1.5 py-0.5", snap ? "text-foreground" : "hover:bg-muted")}
+          title="Snap nodes to an 8px grid when dropped"
+        >
+          <Magnet className="h-3 w-3" />
+          Snap {snap ? "on" : "off"}
+        </button>
+
         <div className="flex items-center gap-1">
           <span>Type</span>
           {EDGE_TYPES.map((t) => (
@@ -767,13 +845,29 @@ export default function WorkflowCanvas() {
           ))}
         </div>
 
-        <span className="ml-auto">1–5 place a node · L adds a lane · Space to pan · Ctrl+scroll to zoom</span>
+        <span className="ml-auto">1–5 place a node · L adds a lane · drag empty space to select many · arrows nudge · Space to pan</span>
       </footer>
     </div>
   )
 }
 
 const subscribeNoop = () => () => {}
+
+const ARROWS: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+}
+
+function Marquee({ rect, zoom, pan }: { rect: { x: number; y: number; width: number; height: number }; zoom: number; pan: { x: number; y: number } }) {
+  return (
+    <div
+      className="pointer-events-none absolute z-20 border border-primary bg-primary/10"
+      style={{ left: rect.x * zoom + pan.x, top: rect.y * zoom + pan.y, width: rect.width * zoom, height: rect.height * zoom }}
+    />
+  )
+}
 
 function FilterChip({ active, color, label, onClick }: { active: boolean; color: string; label: string; onClick: () => void }) {
   return (

@@ -25,7 +25,12 @@ import {
 import type { Template } from "@/lib/templates"
 import { nodeIcons, mechanismIcons } from "./toolbar"
 
-export type Selection = { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "lane"; id: string } | null
+export type Selection =
+  | { kind: "node"; id: string }
+  | { kind: "nodes"; ids: string[] }
+  | { kind: "edge"; id: string }
+  | { kind: "lane"; id: string }
+  | null
 
 interface InspectorProps {
   selection: Selection
@@ -38,6 +43,7 @@ interface InspectorProps {
   onAddLane: () => void
   onUpdateNode: (id: string, updates: Partial<Node>) => void
   onDeleteNode: (id: string) => void
+  onDeleteNodes: (ids: string[]) => void
   onUpdateConnection: (id: string, updates: Partial<Connection>) => void
   onDeleteConnection: (id: string) => void
   onUpdateLane: (id: string, updates: Partial<Lane>) => void
@@ -59,6 +65,7 @@ export function Inspector({
   onAddLane,
   onUpdateNode,
   onDeleteNode,
+  onDeleteNodes,
   onUpdateConnection,
   onDeleteConnection,
   onUpdateLane,
@@ -68,15 +75,30 @@ export function Inspector({
   const node = selection?.kind === "node" ? nodeById(doc, selection.id) : undefined
   const edge = selection?.kind === "edge" ? doc.connections.find((c) => c.id === selection.id) : undefined
   const lane = selection?.kind === "lane" ? laneById(doc, selection.id) : undefined
+  const many = selection?.kind === "nodes" ? selection.ids : undefined
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
       <div className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold">{node ? "Node" : edge ? "Edge" : lane ? "Actor lane" : "Workflow"}</h2>
+        <h2 className="text-sm font-semibold">
+          {node ? "Node" : many ? `${many.length} nodes` : edge ? "Edge" : lane ? "Actor lane" : "Workflow"}
+        </h2>
       </div>
 
       <div className="flex-1 space-y-4 overflow-auto p-4">
-        {!node && !edge && !lane && (
+        {many && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Drag any of them to move the group. Arrow keys nudge. Shift-click adds or removes one.
+            </p>
+            <Button variant="destructive" size="sm" className="w-full" onClick={() => onDeleteNodes(many)}>
+              <Trash2 className="mr-2 h-3 w-3" />
+              Delete {many.length} nodes
+            </Button>
+          </>
+        )}
+
+        {!node && !many && !edge && !lane && (
           <>
             <Field label="Name">
               <Input value={workflowName} onChange={(e) => onRenameWorkflow(e.target.value)} className="h-8 text-sm" />
