@@ -9,6 +9,7 @@ import { InlineEditor } from "./inline-editor"
 
 interface LanePanelProps {
   lane: LaneBox
+  index: number
   width: number
   isSelected: boolean
   isEditing: boolean
@@ -27,6 +28,7 @@ interface LanePanelProps {
  */
 export function LanePanel({
   lane,
+  index,
   width,
   isSelected,
   isEditing,
@@ -52,16 +54,16 @@ export function LanePanel({
         top: lane.top,
         width,
         height: lane.height,
-        backgroundColor: `${color}${isSelected ? "14" : "08"}`,
-        boxShadow: isSelected ? `inset 0 0 0 2px ${color}` : undefined,
+        backgroundColor: `${color}${isSelected ? "1f" : index % 2 ? "0a" : "12"}`,
+        boxShadow: isSelected ? `inset 0 0 0 2px ${color}` : `inset 0 -1px 0 ${color}55`,
       }}
     >
       <div
         className={cn(
-          "absolute left-0 top-0 flex h-full flex-col justify-center gap-1 border-r border-border/70 bg-card/80 px-3 backdrop-blur-[2px]",
+          "absolute left-0 top-0 flex h-full flex-col justify-center gap-1 border-r border-border/70 bg-card/90 py-2 pl-4 pr-3 backdrop-blur-[2px]",
           interactive && "cursor-grab active:cursor-grabbing",
         )}
-        style={{ width: LANE_HEADER_W }}
+        style={{ width: LANE_HEADER_W, boxShadow: `inset 5px 0 0 ${color}` }}
         onPointerDown={(e) => {
           if (!interactive) return
           e.stopPropagation()
@@ -82,7 +84,7 @@ export function LanePanel({
               className="w-full rounded border border-border bg-background px-1 text-xs font-semibold outline-none"
             />
           ) : (
-            <span className="truncate text-xs font-semibold text-foreground" title={lane.actor}>
+            <span className="line-clamp-2 text-[13px] font-semibold leading-tight text-foreground" title={lane.actor}>
               {lane.actor}
             </span>
           )}

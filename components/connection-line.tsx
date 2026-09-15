@@ -56,7 +56,7 @@ export function ConnectionLine({
           fill="none"
           stroke={isSelected ? meta.color : mech.color}
           strokeWidth={width + 6}
-          strokeOpacity={isSelected ? 0.25 : 0.12}
+          strokeOpacity={isSelected ? 0.25 : 0.2}
         />
       )}
 

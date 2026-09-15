@@ -11,6 +11,7 @@ import { HandoffTable } from "./handoff-table"
 import { Toolbar, type Tool } from "./toolbar"
 import { Inspector, type Selection } from "./inspector"
 import { ExportDialog } from "./export-dialog"
+import { Welcome } from "./welcome"
 import {
   EDGE_TYPE_META,
   EDGE_TYPES,
@@ -42,7 +43,7 @@ import { useViewport, MIN_ZOOM, MAX_ZOOM } from "@/hooks/use-viewport"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { ZoomIn, ZoomOut, Maximize2, Upload, Undo2, Redo2, Sun, Moon, Plus, Waves } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, Upload, Undo2, Redo2, Sun, Moon, Plus, Waves, HelpCircle } from "lucide-react"
 
 type Drag =
   | { kind: "pan"; startClient: { x: number; y: number }; startPan: { x: number; y: number } }
@@ -68,6 +69,7 @@ export default function WorkflowCanvas() {
   const [highlightMech, setHighlightMech] = useState<Mechanism | null>(null)
   const [motion, setMotion] = useState(true)
   const [tableOpen, setTableOpen] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
   const [drag, setDrag] = useState<Drag>(null)
   const [spaceDown, setSpaceDown] = useState(false)
 
@@ -96,6 +98,7 @@ export default function WorkflowCanvas() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setWorkflows(s.workflows)
     setActiveId(s.activeId)
+    setShowWelcome(!!s.fresh)
     setLoaded(true)
   }, [])
 
@@ -407,7 +410,11 @@ export default function WorkflowCanvas() {
     const template = templateId ? getTemplateById(templateId) : undefined
     setWorkflows((ws) => [
       ...ws,
-      { id, name: template ? template.name : `Untitled ${ws.length + 1}`, doc: template ? docFromTemplate(template) : blankDoc() },
+      {
+        id,
+        name: template && template.id !== "empty" ? template.name : `My workflow ${ws.length + 1}`,
+        doc: template ? docFromTemplate(template) : blankDoc(),
+      },
     ])
     openWorkflow(id)
   }
@@ -541,6 +548,9 @@ export default function WorkflowCanvas() {
           </Button>
           <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
           <ExportDialog doc={doc} workflowName={active.name} />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowWelcome(true)} title="How this works">
+            <HelpCircle className="h-4 w-4" />
+          </Button>
           {mounted && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} title="Toggle theme">
               {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -565,10 +575,11 @@ export default function WorkflowCanvas() {
             onWheel={onWheel}
           >
             <div className="absolute left-0 top-0" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
-              {lanes.map((l) => (
+              {lanes.map((l, i) => (
                 <LanePanel
                   key={l.id}
                   lane={l}
+                  index={i}
                   width={boardW}
                   isSelected={selection?.kind === "lane" && selection.id === l.id}
                   isEditing={editingId === l.id}
@@ -657,6 +668,30 @@ export default function WorkflowCanvas() {
                 />
               ))}
             </div>
+
+            {loaded && doc.nodes.length === 0 && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <p className="rounded-lg border border-dashed border-border bg-card/90 px-4 py-2 text-center text-sm text-muted-foreground">
+                  Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[11px]">1</kbd> then click inside a lane to add the first step.
+                  <br />
+                  <span className="text-xs">Double-click a lane header to name the actor. <kbd className="rounded border border-border bg-muted px-1 font-mono text-[11px]">L</kbd> adds another lane.</span>
+                </p>
+              </div>
+            )}
+
+            {showWelcome && (
+              <Welcome
+                onClose={() => setShowWelcome(false)}
+                onStartSample={() => {
+                  setShowWelcome(false)
+                  if (doc.nodes.length === 0) loadTemplate("operational-core")
+                }}
+                onStartBlank={() => {
+                  setShowWelcome(false)
+                  createWorkflow("empty")
+                }}
+              />
+            )}
 
             <div className="absolute bottom-4 right-4 z-30 flex items-center gap-1 rounded-lg border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.1))}>

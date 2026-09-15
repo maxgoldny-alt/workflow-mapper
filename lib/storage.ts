@@ -20,6 +20,8 @@ const V2_KEY = "workflow-mapper-state-v2"
 export interface SavedState {
   activeId: string
   workflows: WorkflowFile[]
+  /** True when nothing was saved in this browser before (show the welcome card). */
+  fresh?: boolean
 }
 
 /* ----------------------------------------------------------- v3 shapes */
@@ -165,12 +167,12 @@ export function loadState(): SavedState {
   } catch {
     /* corrupt or unavailable storage — fall through to the default */
   }
-  return { activeId: "wf_default", workflows: [{ id: "wf_default", name: "Operational Core", doc: docFromTemplate() }] }
+  return { activeId: "wf_default", workflows: [{ id: "wf_default", name: "Operational Core", doc: docFromTemplate() }], fresh: true }
 }
 
 export function saveState(state: SavedState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ activeId: state.activeId, workflows: state.workflows }))
   } catch {
     /* storage unavailable — skip this save */
   }

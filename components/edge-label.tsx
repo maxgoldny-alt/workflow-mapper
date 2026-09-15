@@ -93,7 +93,11 @@ export function EdgeLabel({
             "flex max-w-[170px] items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-[11px] leading-tight text-foreground shadow-sm",
             isSelected ? "font-medium" : "hover:shadow",
           )}
-          style={{ borderColor: isHandoff ? mech.color : meta.color, borderWidth: isSelected ? 2 : 1 }}
+          style={{
+            borderColor: isHandoff ? mech.color : meta.color,
+            borderWidth: isSelected ? 2 : 1,
+            backgroundColor: isHandoff ? `color-mix(in srgb, ${mech.color} 12%, var(--card))` : undefined,
+          }}
           title={`${mech.label}${connection.payload ? ` · ${connection.payload}` : ""} — double-click to edit label`}
         >
           {showGlyph && <MechIcon className="h-3 w-3 shrink-0" style={{ color: mech.color }} />}
