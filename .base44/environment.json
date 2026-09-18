@@ -1,0 +1,12 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "description": "Optional. Anthropic API key for the AI interview feature. Without it, the app falls back to a scripted interviewer. Get it from https://console.anthropic.com/settings/keys.",
+      "requiredAtBoot": false
+    }
+  ]
+}
