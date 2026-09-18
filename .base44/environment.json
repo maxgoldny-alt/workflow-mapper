@@ -1,0 +1,17 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "BASE44_APP_ID",
+      "description": "Your Base44 app ID from the Base44 editor URL. Routes the AI interview through Base44's built-in InvokeLLM integration (metered against Base44 credits, no Anthropic key).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "description": "Optional. Anthropic API key for the AI interview when BASE44_APP_ID is not set. Without either, the app falls back to a scripted interviewer. Get it from https://console.anthropic.com/settings/keys.",
+      "requiredAtBoot": false
+    }
+  ]
+}

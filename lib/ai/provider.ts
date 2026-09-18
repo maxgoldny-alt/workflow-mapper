@@ -12,6 +12,8 @@ export interface InterviewTurn {
   say: string
   /** Model changes derived from the user's last answer. */
   ops: Op[]
+  /** Which provider served the turn ("Base44" or "Claude"); absent for scripted. */
+  provider?: string
 }
 
 /**
