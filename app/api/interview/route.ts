@@ -5,10 +5,12 @@ import { INTERVIEWER_RULES, OPENING_QUESTION } from "@/lib/ai/provider"
 export const runtime = "nodejs"
 
 /**
- * Server side of the AI interviewer. The browser never sees the API key.
- * Returns { say, ops } from a forced tool call so the shape is always valid.
- * 503 when no key is configured, so the client can fall back to the scripted
- * interviewer.
+ * Server side of the AI interviewer. The browser never sees any API key.
+ * Providers, in order: Base44's built-in InvokeLLM integration (when
+ * BASE44_APP_ID is set — official @base44/sdk external client, anonymous mode,
+ * metered against the Base44 app's credit quota), then Anthropic (when
+ * ANTHROPIC_API_KEY is set — forced tool call). 503 when neither is
+ * configured, so the client can fall back to the scripted interviewer.
  */
 
 const OP_SCHEMA = {
@@ -75,6 +77,17 @@ const TURN_TOOL: Anthropic.Tool = {
   },
 }
 
+/** Same turn shape as TURN_TOOL, as a plain JSON schema for Base44's InvokeLLM. */
+const TURN_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["say", "ops"],
+  properties: {
+    say: { type: "string", description: "The next thing to say to the user: one clear question, or a brief wrap-up plus a question." },
+    ops: { type: "array", items: OP_SCHEMA },
+  },
+} as const
+
 const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing things are created):
 - ensureArea {name, purpose?, inputs?, outputs?}
 - ensureProcess {area, name, purpose?}
@@ -90,16 +103,64 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 - note {process, node, notes}
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
-export async function POST(req: Request) {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return NextResponse.json({ error: "no_api_key" }, { status: 503 })
+type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string }
 
-  let body: { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string }
+/** Base44 provider: the app's built-in InvokeLLM core integration, reached through the
+ * official @base44/sdk external client (anonymous mode). Structured output via
+ * response_json_schema replaces the forced tool call. Metered against the app's
+ * Base44 credit quota; no provider API key involved. */
+async function base44Turn(body: InterviewBody, appId: string) {
+  const { createClient } = await import("@base44/sdk")
+  const base44 = createClient({ appId })
+
+  const transcript = body.messages.map((m) => `${m.role === "ai" ? "Interviewer" : "User"}: ${m.text}`)
+  if (body.userText !== null) transcript.push(`User: ${body.userText}`)
+  if (!transcript.length || body.messages[0]?.role === "ai") transcript.unshift("User: (Start the interview.)")
+
+  const prompt = `${INTERVIEWER_RULES}
+
+${OPS_GUIDE}
+
+Opening question if the model is empty and nothing has been said: "${OPENING_QUESTION}"
+
+Current model (JSON):
+${body.modelSummary}${body.focus ? `
+
+The process currently being mapped: "${body.focus}". Put new steps there unless the user clearly moves on.` : ""}
+
+Conversation so far:
+${transcript.join("\n")}
+
+Record every fact from the user's latest message as ops (an empty array when the conversation is just starting), and set "say" to your next single question.`
+
+  try {
+    const raw = (await base44.integrations.Core.InvokeLLM({ prompt, response_json_schema: TURN_SCHEMA })) as unknown
+    const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
+    if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
+    return NextResponse.json({ say: data.say, ops: Array.isArray(data.ops) ? data.ops : [], provider: "Base44" })
+  } catch (err) {
+    const status = (err as { status?: number }).status
+    if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
+    // Bad or unauthorized app id: same shape as "no provider configured" so the
+    // client falls back to the scripted interviewer instead of hard-failing.
+    if (status === 401 || status === 403 || status === 404) return NextResponse.json({ error: "bad_app_id" }, { status: 503 })
+    return NextResponse.json({ error: "base44_error" }, { status: 502 })
+  }
+}
+
+export async function POST(req: Request) {
+  let body: InterviewBody
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 })
   }
+
+  const appId = process.env.BASE44_APP_ID
+  if (appId) return base44Turn(body, appId)
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return NextResponse.json({ error: "no_api_key" }, { status: 503 })
 
   const client = new Anthropic({ apiKey })
   const model = process.env.INTERVIEW_MODEL || "claude-opus-5"
@@ -127,7 +188,7 @@ export async function POST(req: Request) {
     const call = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
     if (!call) return NextResponse.json({ error: "no_tool_call" }, { status: 502 })
     const input = call.input as { say: string; ops: unknown[] }
-    return NextResponse.json({ say: input.say, ops: Array.isArray(input.ops) ? input.ops : [] })
+    return NextResponse.json({ say: input.say, ops: Array.isArray(input.ops) ? input.ops : [], provider: "Claude" })
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) return NextResponse.json({ error: "bad_api_key" }, { status: 503 })
     if (err instanceof Anthropic.RateLimitError) return NextResponse.json({ error: "rate_limited" }, { status: 429 })

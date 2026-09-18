@@ -145,6 +145,7 @@ export default function App() {
         } else setAiError((err as Error).message)
       }
       if (turn) {
+        if (turn.provider) setProviderName(turn.provider)
         const aiId = newId("m")
         const { model: next, derived } = applyOps(baseModel, turn.ops, aiId)
         const aiMsg = { id: aiId, role: "ai" as const, text: turn.say, at: Date.now(), derived: derived.length ? derived : undefined }

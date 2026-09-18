@@ -7,9 +7,11 @@ export class NoApiKeyError extends Error {
   }
 }
 
-/** Browser-side client for /api/interview. Throws NoApiKeyError on 503 so the caller can fall back. */
+/** Browser-side client for /api/interview (the server route picks the provider:
+ * Base44 first, then Anthropic). Throws NoApiKeyError on 503 so the caller can
+ * fall back to the scripted interviewer. */
 export const claudeInterviewer: Interviewer = {
-  name: "Claude",
+  name: "AI",
   async next(ctx: InterviewContext, userText: string | null): Promise<InterviewTurn> {
     const focus = ctx.focusProcessId ? ctx.model.processes.find((p) => p.id === ctx.focusProcessId)?.name : undefined
     const res = await fetch("/api/interview", {
@@ -27,7 +29,7 @@ export const claudeInterviewer: Interviewer = {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
       throw new Error(body.error ?? `Interview request failed (${res.status})`)
     }
-    const data = (await res.json()) as { say: string; ops: Op[] }
-    return { say: data.say, ops: data.ops ?? [] }
+    const data = (await res.json()) as { say: string; ops: Op[]; provider?: string }
+    return { say: data.say, ops: data.ops ?? [], provider: data.provider }
   },
 }
