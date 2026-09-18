@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { EDGE_TYPE_META, MECHANISM_META, type Connection, type Node } from "@/lib/model"
+import { EDGE_TYPE_META, EXECUTION_META, type Connection, type Node } from "@/lib/model"
 import { edgePath, nodeCenter, arrowAt } from "@/lib/geometry"
 
 interface ConnectionLineProps {
@@ -11,14 +11,15 @@ interface ConnectionLineProps {
   isHandoff: boolean
   isSelected: boolean
   isDimmed: boolean
+  emphasised: boolean
   animate: boolean
   onSelect: (e: React.MouseEvent) => void
 }
 
 /**
- * Edge type sets the colour; mechanism sets the dash. A solid line means the
+ * Edge type sets the colour; execution sets the dash. A solid line means the
  * data moves on its own; a dashed one means a person is still carrying it.
- * Handoffs (lane-crossing edges) get a faint halo in the mechanism colour.
+ * Handoffs (lane-crossing edges) get a halo in the execution colour.
  */
 export function ConnectionLine({
   connection,
@@ -27,11 +28,12 @@ export function ConnectionLine({
   isHandoff,
   isSelected,
   isDimmed,
+  emphasised,
   animate,
   onSelect,
 }: ConnectionLineProps) {
   const meta = EDGE_TYPE_META[connection.type] || EDGE_TYPE_META.sequence
-  const mech = MECHANISM_META[connection.mechanism] || MECHANISM_META.unknown
+  const exec = EXECUTION_META[connection.execution] || EXECUTION_META.unknown
   const start = nodeCenter(from)
   const end = nodeCenter(to)
   const d = edgePath(start, end)
@@ -39,8 +41,7 @@ export function ConnectionLine({
   const width = isHandoff ? 2.5 : 2
 
   return (
-    <g opacity={isDimmed ? 0.2 : 1}>
-      {/* Invisible fat stroke so the edge is easy to click */}
+    <g opacity={isDimmed ? 0.15 : 1}>
       <path
         d={d}
         fill="none"
@@ -50,27 +51,25 @@ export function ConnectionLine({
         onClick={onSelect}
       />
 
-      {(isSelected || isHandoff) && (
+      {(isSelected || emphasised) && (
         <path
           d={d}
           fill="none"
-          stroke={isSelected ? meta.color : mech.color}
+          stroke={isSelected ? meta.color : exec.color}
           strokeWidth={width + 6}
           strokeOpacity={isSelected ? 0.25 : 0.2}
         />
       )}
 
-      {/* The line runs center-to-center and disappears under the node body */}
       <path
         d={d}
         fill="none"
         stroke={meta.color}
         strokeWidth={isSelected ? width + 1 : width}
-        strokeDasharray={mech.dash}
+        strokeDasharray={exec.dash}
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Dashes travelling toward the target read as direction of flow */}
       {animate && (
         <path
           d={d}

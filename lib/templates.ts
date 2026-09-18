@@ -1,106 +1,202 @@
-import { LANE_COLORS, type Doc } from "./model"
+import {
+  AREA_COLORS,
+  LANE_COLORS,
+  blankModel,
+  newId,
+  type Connection,
+  type Doc,
+  type Model,
+  type Workspace,
+} from "./model"
 
 export interface Template {
   id: string
   name: string
   description: string
-  doc: Doc
+  build: () => Model
 }
 
-// Lane tops for the Operational Core template: 0, 160, 360, 520 (heights 160, 200, 160, 180)
-const operationalCore: Template = {
-  id: "operational-core",
-  name: "Operational Core",
-  description: "Order intake, review, fulfilment, and the systems underneath",
-  doc: {
-    lanes: [
-      { id: "customer", actor: "Customer", height: 160, color: LANE_COLORS[0] },
-      { id: "ops", actor: "Ops Manager", height: 200, color: LANE_COLORS[1] },
-      { id: "warehouse", actor: "Warehouse", height: 160, color: LANE_COLORS[2] },
-      { id: "systems", actor: "Systems", height: 180, color: LANE_COLORS[7] },
-    ],
-    nodes: [
-      { id: "place_order", label: "Place Order", type: "step", x: 200, y: 36, lane: "customer" },
+type EdgeOpts = Partial<Omit<Connection, "id" | "from" | "to">>
+const e = (id: string, from: string, to: string, o: EdgeOpts = {}): Connection => ({
+  id,
+  from,
+  to,
+  type: "sequence",
+  channel: "unknown",
+  execution: "unknown",
+  integration: "unknown",
+  verification: "reported",
+  ...o,
+})
 
-      { id: "validate", label: "Order Valid?", type: "decision", x: 380, y: 216, lane: "ops" },
-      { id: "review", label: "Review Order", type: "step", x: 560, y: 216, lane: "ops" },
-      { id: "approve", label: "Approved?", type: "decision", x: 740, y: 216, lane: "ops" },
-      { id: "schedule", label: "Schedule Job", type: "step", x: 920, y: 216, lane: "ops" },
-      { id: "notify", label: "Notify Customer", type: "step", x: 1100, y: 216, lane: "ops" },
+/* ------------------------------------------------------ Order to Cash */
 
-      { id: "pack", label: "Pack & Ship", type: "step", x: 920, y: 396, lane: "warehouse" },
-
-      { id: "crm", label: "CRM", sublabel: "HubSpot", type: "tool", x: 200, y: 566, lane: "systems" },
-      { id: "erp", label: "ERP", sublabel: "NetSuite", type: "system", x: 560, y: 566, lane: "systems" },
-      { id: "courier", label: "Courier API", type: "tool", x: 920, y: 566, lane: "systems" },
-      { id: "email_sys", label: "Email", sublabel: "SendGrid", type: "system", x: 1100, y: 566, lane: "systems" },
-    ],
-    connections: [
-      { id: "e1", from: "place_order", to: "validate", type: "sequence", mechanism: "email", payload: "Order form PDF" },
-      { id: "e2", from: "place_order", to: "crm", type: "data", label: "logged to", mechanism: "manual", payload: "Customer + order" },
-      { id: "e3", from: "validate", to: "review", type: "yes", mechanism: "automated" },
-      { id: "e4", from: "validate", to: "notify", type: "no", label: "reject", mechanism: "manual" },
-      { id: "e5", from: "review", to: "erp", type: "data", label: "reads stock", mechanism: "api-available", payload: "SKU levels" },
-      { id: "e6", from: "review", to: "approve", type: "sequence", mechanism: "automated" },
-      { id: "e7", from: "approve", to: "schedule", type: "yes", mechanism: "automated" },
-      { id: "e8", from: "approve", to: "notify", type: "no", mechanism: "manual" },
-      { id: "e9", from: "schedule", to: "pack", type: "sequence", mechanism: "chat", payload: "Job sheet" },
-      { id: "e10", from: "pack", to: "courier", type: "uses", label: "books", mechanism: "api-wired", payload: "Shipment" },
-      { id: "e11", from: "pack", to: "notify", type: "sequence", mechanism: "spreadsheet", payload: "Tracking number" },
-      { id: "e12", from: "notify", to: "email_sys", type: "uses", label: "sends via", mechanism: "api-wired" },
-      { id: "e13", from: "erp", to: "email_sys", type: "data", label: "order data", mechanism: "api-wired" },
-    ],
-  },
+// Lane tops: 0, 160, 360
+const emailIntake: Doc = {
+  lanes: [
+    { id: "customer", actor: "Customer", actorId: "act_customer", height: 160, color: LANE_COLORS[0] },
+    { id: "veronica", actor: "Veronica", actorId: "act_veronica", height: 200, color: LANE_COLORS[1] },
+    { id: "systems", actor: "Systems", actorId: "act_systems", height: 180, color: LANE_COLORS[7] },
+  ],
+  nodes: [
+    { id: "send_order", label: "Emails order", sublabel: "PDF attached", type: "trigger", x: 200, y: 36, lane: "customer", dataOut: ["do_order_pdf"] },
+    { id: "check_mailbox", label: "Checks orders mailbox", type: "step", x: 380, y: 216, lane: "veronica", systemId: "sys_orders_mailbox" },
+    { id: "open_pdf", label: "Opens PDF", type: "step", x: 560, y: 216, lane: "veronica", dataIn: ["do_order_pdf"] },
+    { id: "complete", label: "Order complete?", type: "decision", x: 740, y: 216, lane: "veronica" },
+    { id: "enter_qb", label: "Enters order in QuickBooks", type: "step", x: 920, y: 216, lane: "veronica", systemId: "sys_quickbooks", dataOut: ["do_order_record"] },
+    { id: "mailbox", label: "Orders mailbox", sublabel: "Microsoft 365", type: "system", x: 380, y: 396, lane: "systems", systemId: "sys_orders_mailbox" },
+    { id: "quickbooks", label: "QuickBooks", type: "system", x: 920, y: 396, lane: "systems", systemId: "sys_quickbooks" },
+  ],
+  connections: [
+    e("e1", "send_order", "check_mailbox", { channel: "email", execution: "human", integration: "none", triggerKind: "human-check", trigger: "Veronica checks the mailbox during the day", payload: "Order PDF", dataObjectIds: ["do_order_pdf"] }),
+    e("e2", "check_mailbox", "mailbox", { type: "uses", channel: "system", execution: "human", integration: "none" }),
+    e("e3", "check_mailbox", "open_pdf", { channel: "system", execution: "human", integration: "none" }),
+    e("e4", "open_pdf", "complete", { channel: "system", execution: "human", integration: "none" }),
+    e("e5", "complete", "enter_qb", { type: "yes", channel: "system", execution: "human", integration: "none", payload: "Order details typed by hand", dataObjectIds: ["do_order_pdf", "do_order_record"] }),
+    e("e6", "enter_qb", "quickbooks", { type: "uses", channel: "system", execution: "human", integration: "none" }),
+  ],
 }
 
-// Lane tops: 0, 180, 360
-const approvalFlow: Template = {
-  id: "approval-flow",
-  name: "Approval Flow",
-  description: "Request, review, approve, record",
-  doc: {
-    lanes: [
-      { id: "requester", actor: "Requester", height: 180, color: LANE_COLORS[0] },
-      { id: "manager", actor: "Manager", height: 180, color: LANE_COLORS[1] },
-      { id: "systems", actor: "Systems", height: 180, color: LANE_COLORS[7] },
-    ],
-    nodes: [
-      { id: "submit", label: "Submit Request", type: "step", x: 200, y: 46, lane: "requester" },
-      { id: "review_req", label: "Review", type: "step", x: 420, y: 226, lane: "manager" },
-      { id: "decision", label: "Approve?", type: "decision", x: 620, y: 226, lane: "manager" },
-      { id: "form_tool", label: "Form Tool", sublabel: "Typeform", type: "tool", x: 200, y: 406, lane: "systems" },
-      { id: "record", label: "Record System", type: "system", x: 820, y: 406, lane: "systems" },
-      { id: "notify_ok", label: "Notify Approved", type: "step", x: 1020, y: 406, lane: "systems" },
-    ],
-    connections: [
-      { id: "e1", from: "submit", to: "form_tool", type: "uses", label: "via", mechanism: "api-wired" },
-      { id: "e2", from: "submit", to: "review_req", type: "sequence", mechanism: "email", payload: "Request form" },
-      { id: "e3", from: "review_req", to: "decision", type: "sequence", mechanism: "automated" },
-      { id: "e4", from: "decision", to: "record", type: "yes", mechanism: "manual", payload: "Approval + amount" },
-      { id: "e5", from: "decision", to: "submit", type: "no", label: "revise", mechanism: "chat" },
-      { id: "e6", from: "record", to: "notify_ok", type: "data", label: "triggers", mechanism: "api-wired" },
-    ],
-  },
+// Lane tops: 0, 180
+const fulfilment: Doc = {
+  lanes: [
+    { id: "ops", actor: "Ops Manager", actorId: "act_ops", height: 180, color: LANE_COLORS[1] },
+    { id: "warehouse", actor: "Warehouse", actorId: "act_warehouse", height: 180, color: LANE_COLORS[2] },
+  ],
+  nodes: [
+    { id: "schedule", label: "Schedules job", type: "step", x: 200, y: 46, lane: "ops" },
+    { id: "pack", label: "Pack & ship", type: "step", x: 420, y: 226, lane: "warehouse" },
+    { id: "book_courier", label: "Books courier", type: "step", x: 620, y: 226, lane: "warehouse", systemId: "sys_courier" },
+  ],
+  connections: [
+    e("f1", "schedule", "pack", { channel: "chat", execution: "human", integration: "none", payload: "Job sheet", triggerKind: "human-check", trigger: "Warehouse reads the chat channel" }),
+    e("f2", "pack", "book_courier", { channel: "system", execution: "human", integration: "none" }),
+  ],
 }
 
-const empty: Template = {
-  id: "empty",
-  name: "Empty",
-  description: "Start from scratch",
-  doc: {
-    lanes: [{ id: "lane_1", actor: "Actor 1", height: 220, color: LANE_COLORS[0] }],
-    nodes: [],
-    connections: [],
-  },
+// Lane tops: 0, 180
+const billing: Doc = {
+  lanes: [
+    { id: "finance", actor: "Finance", actorId: "act_finance", height: 180, color: LANE_COLORS[5] },
+    { id: "customer", actor: "Customer", actorId: "act_customer", height: 180, color: LANE_COLORS[0] },
+  ],
+  nodes: [
+    { id: "invoice", label: "Creates invoice", type: "step", x: 200, y: 46, lane: "finance", systemId: "sys_quickbooks", dataOut: ["do_invoice"] },
+    { id: "send_invoice", label: "Emails invoice", type: "step", x: 420, y: 46, lane: "finance" },
+    { id: "pay", label: "Pays", type: "step", x: 620, y: 226, lane: "customer" },
+  ],
+  connections: [
+    e("b1", "invoice", "send_invoice", { channel: "system", execution: "human", integration: "none" }),
+    e("b2", "send_invoice", "pay", { channel: "email", execution: "human", integration: "none", payload: "Invoice PDF", dataObjectIds: ["do_invoice"] }),
+  ],
 }
 
-export const templates: Template[] = [operationalCore, approvalFlow, empty]
-export const defaultTemplate = operationalCore
+function orderToCash(): Model {
+  const m = blankModel("Sample Co")
+  m.areas = [
+    { id: "area_intake", name: "Order Intake", purpose: "Orders arrive and are captured", order: 0, color: AREA_COLORS[0], inputs: "Customer orders", outputs: "Order in QuickBooks" },
+    { id: "area_fulfil", name: "Fulfillment", purpose: "Job is scheduled, packed and shipped", order: 1, color: AREA_COLORS[2], inputs: "Order in QuickBooks", outputs: "Shipped order" },
+    { id: "area_billing", name: "Billing & Payment", purpose: "Invoice and collect", order: 2, color: AREA_COLORS[5], inputs: "Shipped order", outputs: "Payment" },
+  ]
+  m.areaLinks = [
+    { id: "al1", from: "area_intake", to: "area_fulfil", label: "Order ready", payload: "Order record", channel: "system", execution: "human", verification: "reported" },
+    { id: "al2", from: "area_fulfil", to: "area_billing", label: "Shipped", payload: "Tracking number", channel: "spreadsheet", execution: "human", verification: "reported" },
+  ]
+  m.processes = [
+    { id: "proc_email_intake", areaId: "area_intake", name: "Email order intake", purpose: "How an emailed order becomes a QuickBooks order", doc: emailIntake },
+    { id: "proc_fulfil", areaId: "area_fulfil", name: "Pick, pack, ship", doc: fulfilment },
+    { id: "proc_billing", areaId: "area_billing", name: "Invoice and collect", doc: billing },
+  ]
+  m.actors = [
+    { id: "act_customer", name: "Customer", kind: "customer" },
+    { id: "act_veronica", name: "Veronica", kind: "person", notes: "Monitors the orders mailbox" },
+    { id: "act_ops", name: "Ops Manager", kind: "role" },
+    { id: "act_warehouse", name: "Warehouse", kind: "team" },
+    { id: "act_finance", name: "Finance", kind: "team" },
+    { id: "act_systems", name: "Systems", kind: "unknown" },
+  ]
+  m.platforms = [
+    { id: "plat_m365", name: "Microsoft 365", vendor: "Microsoft", category: "Email & collaboration" },
+    { id: "plat_qbo", name: "QuickBooks Online", vendor: "Intuit", category: "Accounting" },
+  ]
+  m.systems = [
+    { id: "sys_orders_mailbox", name: "Orders shared mailbox", platformId: "plat_m365", kind: "mailbox", accountType: "shared", ownerActorId: "act_veronica", purpose: "Receives customer orders", dataIn: "Order emails with PDF", integration: "none", verification: "reported" },
+    { id: "sys_quickbooks", name: "QuickBooks", platformId: "plat_qbo", kind: "app", accountType: "company", purpose: "Orders and invoicing", integration: "unknown", verification: "reported" },
+    { id: "sys_courier", name: "Courier portal", kind: "website", integration: "none", verification: "reported" },
+  ]
+  m.dataObjects = [
+    { id: "do_order_pdf", name: "Order PDF", kind: "document", format: "PDF" },
+    { id: "do_order_record", name: "Order record", kind: "record" },
+    { id: "do_invoice", name: "Invoice", kind: "document", format: "PDF" },
+  ]
+  m.questions = [
+    { id: "q1", text: "Do website, phone and text orders also end up in the orders mailbox, or somewhere else?", ref: { areaId: "area_intake" }, status: "open", source: "ai", createdAt: Date.now() },
+    { id: "q2", text: "What happens when an order is incomplete?", ref: { processId: "proc_email_intake", nodeId: "complete" }, status: "open", source: "ai", createdAt: Date.now() },
+    { id: "q3", text: "How does Fulfillment know a new order is in QuickBooks?", ref: { areaId: "area_fulfil" }, status: "open", source: "ai", createdAt: Date.now() },
+  ]
+  return m
+}
+
+/* ------------------------------------------------- Operational Core */
+
+// Lane tops: 0, 160, 360, 520
+const operationalCoreDoc: Doc = {
+  lanes: [
+    { id: "customer", actor: "Customer", height: 160, color: LANE_COLORS[0] },
+    { id: "ops", actor: "Ops Manager", height: 200, color: LANE_COLORS[1] },
+    { id: "warehouse", actor: "Warehouse", height: 160, color: LANE_COLORS[2] },
+    { id: "systems", actor: "Systems", height: 180, color: LANE_COLORS[7] },
+  ],
+  nodes: [
+    { id: "place_order", label: "Place Order", type: "step", x: 200, y: 36, lane: "customer" },
+    { id: "validate", label: "Order Valid?", type: "decision", x: 380, y: 216, lane: "ops" },
+    { id: "review", label: "Review Order", type: "step", x: 560, y: 216, lane: "ops" },
+    { id: "approve", label: "Approved?", type: "decision", x: 740, y: 216, lane: "ops" },
+    { id: "schedule", label: "Schedule Job", type: "step", x: 920, y: 216, lane: "ops" },
+    { id: "notify", label: "Notify Customer", type: "step", x: 1100, y: 216, lane: "ops" },
+    { id: "pack", label: "Pack & Ship", type: "step", x: 920, y: 396, lane: "warehouse" },
+    { id: "crm", label: "CRM", sublabel: "HubSpot", type: "tool", x: 200, y: 566, lane: "systems" },
+    { id: "erp", label: "ERP", sublabel: "NetSuite", type: "system", x: 560, y: 566, lane: "systems" },
+    { id: "courier", label: "Courier API", type: "tool", x: 920, y: 566, lane: "systems" },
+    { id: "email_sys", label: "Email", sublabel: "SendGrid", type: "system", x: 1100, y: 566, lane: "systems" },
+  ],
+  connections: [
+    e("e1", "place_order", "validate", { channel: "email", execution: "human", integration: "none", payload: "Order form PDF" }),
+    e("e2", "place_order", "crm", { type: "data", label: "logged to", channel: "other", execution: "human", integration: "none", payload: "Customer + order" }),
+    e("e3", "validate", "review", { type: "yes", channel: "system", execution: "system", integration: "live" }),
+    e("e4", "validate", "notify", { type: "no", label: "reject", channel: "other", execution: "human", integration: "none" }),
+    e("e5", "review", "erp", { type: "data", label: "reads stock", channel: "api", execution: "unknown", integration: "possible", payload: "SKU levels" }),
+    e("e6", "review", "approve", { channel: "system", execution: "system", integration: "live" }),
+    e("e7", "approve", "schedule", { type: "yes", channel: "system", execution: "system", integration: "live" }),
+    e("e8", "approve", "notify", { type: "no", channel: "other", execution: "human", integration: "none" }),
+    e("e9", "schedule", "pack", { channel: "chat", execution: "human", integration: "none", payload: "Job sheet" }),
+    e("e10", "pack", "courier", { type: "uses", label: "books", channel: "api", execution: "system", integration: "live", payload: "Shipment" }),
+    e("e11", "pack", "notify", { channel: "spreadsheet", execution: "human", integration: "none", payload: "Tracking number" }),
+    e("e12", "notify", "email_sys", { type: "uses", label: "sends via", channel: "api", execution: "system", integration: "live" }),
+    e("e13", "erp", "email_sys", { type: "data", label: "order data", channel: "api", execution: "system", integration: "live" }),
+  ],
+}
+
+function operationalCore(): Model {
+  const m = blankModel("Sample Co")
+  m.areas = [{ id: "area_ops", name: "Operations", purpose: "Order intake, review, fulfilment", order: 0, color: AREA_COLORS[1] }]
+  m.processes = [{ id: "proc_ops", areaId: "area_ops", name: "Operational Core", doc: operationalCoreDoc }]
+  return m
+}
+
+/* ---------------------------------------------------------- registry */
+
+export const templates: Template[] = [
+  { id: "order-to-cash", name: "Order to Cash (sample)", description: "Three areas: intake, fulfilment, billing", build: orderToCash },
+  { id: "operational-core", name: "Operational Core", description: "One area, one detailed process", build: operationalCore },
+  { id: "empty", name: "Empty company", description: "Start from nothing", build: () => blankModel("My company") },
+]
+export const defaultTemplate = templates[0]
 export const getTemplateById = (id: string) => templates.find((t) => t.id === id)
 
-/** Deep-enough copy so edits never leak back into the template. */
-export const docFromTemplate = (t: Template = defaultTemplate): Doc => ({
-  lanes: t.doc.lanes.map((l) => ({ ...l })),
-  nodes: t.doc.nodes.map((n) => ({ ...n })),
-  connections: t.doc.connections.map((c) => ({ ...c })),
-})
+/** Fresh model via structuredClone so edits never leak into the template. */
+export const workspaceFromTemplate = (t: Template = defaultTemplate, name?: string): Workspace => {
+  const model = structuredClone(t.build())
+  if (name) model.company.name = name
+  return { id: newId("ws"), name: name ?? model.company.name, model }
+}

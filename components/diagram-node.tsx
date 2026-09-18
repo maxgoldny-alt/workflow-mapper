@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { cn } from "@/lib/utils"
-import { NODE_TYPE_META, NODE_W, NODE_H, type Node } from "@/lib/model"
+import { NODE_TYPE_META, NODE_W, NODE_H, VERIFICATION_META, type Node } from "@/lib/model"
 import { nodeIcons } from "./toolbar"
 import { InlineEditor } from "./inline-editor"
 
@@ -15,6 +15,7 @@ interface DiagramNodeProps {
   isConnectTarget: boolean
   isEditing: boolean
   interactive: boolean
+  badge?: { text: string; color: string; title: string }
   onPointerDown: (e: React.PointerEvent, node: Node) => void
   onStartConnect: (e: React.PointerEvent, node: Node, side: HandleSide) => void
   onStartEditing: (nodeId: string) => void
@@ -36,6 +37,7 @@ export function DiagramNode({
   isConnectTarget,
   isEditing,
   interactive,
+  badge,
   onPointerDown,
   onStartConnect,
   onStartEditing,
@@ -45,6 +47,7 @@ export function DiagramNode({
   const meta = NODE_TYPE_META[node.type]
   const Icon = nodeIcons[node.type]
   const isNote = node.type === "note"
+  const ver = node.verification
   const commit = (next: string) => {
     if (next && next !== node.label) onCommitLabel(node.id, next)
     else onCancelEditing()
@@ -53,8 +56,8 @@ export function DiagramNode({
   return (
     <div
       className={cn(
-        "group absolute select-none",
-        isDimmed && "opacity-40",
+        "group absolute select-none transition-opacity",
+        isDimmed && "opacity-25",
         interactive ? "cursor-grab active:cursor-grabbing" : "cursor-default",
       )}
       style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H }}
@@ -67,8 +70,9 @@ export function DiagramNode({
       <div
         className={cn(
           "flex h-full w-full flex-col items-center justify-center gap-1.5 border-2 px-2 shadow-sm transition-shadow",
-          isNote ? "rounded-sm border-transparent" : "rounded-xl bg-card",
+          isNote ? "rounded-sm border-transparent" : node.type === "trigger" ? "rounded-full bg-card" : "rounded-xl bg-card",
           node.type === "decision" && "border-dashed",
+          ver === "inferred" && !isNote && "border-dotted",
         )}
         style={{
           borderColor: isNote ? undefined : meta.color,
@@ -88,7 +92,7 @@ export function DiagramNode({
           />
         ) : (
           <div className="w-full text-center">
-            <div className={cn("text-xs font-medium leading-tight", isNote ? "line-clamp-2" : "truncate text-foreground")}>
+            <div className={cn("text-xs font-medium leading-tight", isNote ? "line-clamp-2" : "line-clamp-2 text-foreground")}>
               {node.label}
             </div>
             {node.sublabel && (
@@ -100,14 +104,29 @@ export function DiagramNode({
         )}
       </div>
 
+      {/* Status marks: notes dot, verification, finding badge */}
       {node.notes && !isNote && (
+        <span className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full border border-card bg-amber-400" title={node.notes} />
+      )}
+      {ver && ver !== "confirmed" && !isNote && (
         <span
-          className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-card bg-amber-400"
-          title={node.notes}
-        />
+          className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full border border-card px-1 text-[9px] font-semibold text-white"
+          style={{ backgroundColor: VERIFICATION_META[ver].color }}
+          title={VERIFICATION_META[ver].hint}
+        >
+          {VERIFICATION_META[ver].short}
+        </span>
+      )}
+      {badge && (
+        <span
+          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-card px-1 text-[10px] font-semibold text-white"
+          style={{ backgroundColor: badge.color }}
+          title={badge.title}
+        >
+          {badge.text}
+        </span>
       )}
 
-      {/* Connection handles — drag one onto another node to draw an edge */}
       {interactive &&
         (Object.keys(handlePositions) as HandleSide[]).map((side) => (
           <button

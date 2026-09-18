@@ -1,5 +1,5 @@
-import WorkflowCanvas from "@/components/workflow-canvas"
+import App from "@/components/app"
 
 export default function Home() {
-  return <WorkflowCanvas />
+  return <App />
 }
