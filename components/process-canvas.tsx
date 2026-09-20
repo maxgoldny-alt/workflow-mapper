@@ -103,12 +103,16 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
     fitTo([{ x: 0, y: 0, w: LANE_HEADER_W + 40, h: boardH }, ...doc.nodes.map((n) => ({ x: n.x, y: n.y, w: NODE_W, h: NODE_H }))])
   }, [fitTo, doc.nodes, boardH])
 
+  // Fit on open, and again when the first steps land on an empty board (the AI interview fills it in)
   const fittedFor = useRef<string | null>(null)
+  const hadNodes = useRef(doc.nodes.length > 0)
   useEffect(() => {
-    if (fittedFor.current === process.id) return
+    const firstNodes = !hadNodes.current && doc.nodes.length > 0
+    hadNodes.current = doc.nodes.length > 0
+    if (fittedFor.current === process.id && !firstNodes) return
     fittedFor.current = process.id
     zoomToFit()
-  }, [process.id, zoomToFit])
+  }, [process.id, zoomToFit, doc.nodes.length])
 
   /* ------------------------------------------------------------ interactions */
 
