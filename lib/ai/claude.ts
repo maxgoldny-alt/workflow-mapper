@@ -27,6 +27,8 @@ export const claudeInterviewer: Interviewer = {
     if (res.status === 503) throw new NoApiKeyError()
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
+      // A dead or misconfigured server route should not kill the interview: fall back to the scripted interviewer
+      if (res.status >= 500 || res.status === 404) throw new NoApiKeyError()
       throw new Error(body.error ?? `Interview request failed (${res.status})`)
     }
     const data = (await res.json()) as { say: string; ops: Op[]; provider?: string }
