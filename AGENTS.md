@@ -11,7 +11,7 @@
 - Healthcheck curls `http://localhost:3000`
 
 ## Environment
-- `BASE44_APP_ID` (optional, preferred): routes the AI interview through Base44's built-in **InvokeLLM** core integration via the official `@base44/sdk` external client (anonymous mode, `response_json_schema` for the structured `{say, ops}` turn). Metered against the app's Base44 credit quota; no provider API key involved. Delivered via `/run/base44/app.env` (compose `env_file`).
+- `BASE44_APP_ID` (optional, preferred): routes the AI interview through Base44's built-in **InvokeLLM** core integration via the official `@base44/sdk` external client (anonymous mode, `response_json_schema` for the structured `{say, ops}` turn). Metered against the app's Base44 credit quota; no provider API key involved. Delivered via `/run/base44/app.env` (compose `env_file`). The id must belong to a **published native** Base44 app: Base44 rejects anonymous InvokeLLM calls for undeployed apps (`not_deployed`), and imported apps cannot be published. A published app that serves only as the AI/credit backend is fine; the app itself can be hosted anywhere (Vercel).
 - `ANTHROPIC_API_KEY` (optional): legacy fallback when `BASE44_APP_ID` is not set — Claude runs the interview server-side (forced tool call).
 - Neither set → `/api/interview` returns 503 and the client falls back to the scripted interviewer. The app always works.
 - `INTERVIEW_MODEL` (optional, Anthropic path only): defaults to `claude-opus-5`

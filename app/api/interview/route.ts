@@ -77,14 +77,19 @@ const TURN_TOOL: Anthropic.Tool = {
   },
 }
 
-/** Same turn shape as TURN_TOOL, as a plain JSON schema for Base44's InvokeLLM. */
+/** Turn shape for Base44's InvokeLLM. Only `op` is declared per item: listing every
+ * optional field makes schema-constrained models pad all of them with filler. The
+ * fields themselves are described in OPS_GUIDE. */
 const TURN_SCHEMA = {
   type: "object",
-  additionalProperties: false,
   required: ["say", "ops"],
   properties: {
     say: { type: "string", description: "The next thing to say to the user: one clear question, or a brief wrap-up plus a question." },
-    ops: { type: "array", items: OP_SCHEMA },
+    ops: {
+      type: "array",
+      description: "Model operations for facts in the user's latest message. Each item has `op` plus only the fields you know.",
+      items: OP_SCHEMA,
+    },
   },
 } as const
 
@@ -104,6 +109,61 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
 type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string }
+
+const FILLER = new Set(["unknown", "n/a", "none", "null", "undefined", "", "-", "not specified", "not provided", "not applicable"])
+
+/** Schema-constrained models pad optional fields with placeholders; drop those so applyOps treats them as absent.
+ * `unknown` is a real value only for the enum fields that define it. */
+const OP_NAMES = new Set(OP_SCHEMA.properties.op.enum as readonly string[])
+const OP_FIELDS = new Set(Object.keys(OP_SCHEMA.properties))
+const NAME_KEYS = new Set(["name", "area", "process", "label", "text", "from", "to", "fromArea", "toArea", "node", "system", "platform", "owner", "actor", "after"])
+
+function stripFiller(op: unknown): Record<string, unknown> | null {
+  if (!op || typeof op !== "object") return null
+  const src = op as Record<string, unknown>
+  if (typeof src.op !== "string" || !OP_NAMES.has(src.op)) return null
+  const keepUnknown = new Set(["kind", "channel", "execution", "integration", "triggerKind", "accountType"])
+  const name = typeof src.name === "string" ? src.name.trim().toLowerCase() : typeof src.label === "string" ? src.label.trim().toLowerCase() : ""
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(src)) {
+    if (!OP_FIELDS.has(k)) continue
+    if (typeof v === "string") {
+      const t = v.trim().toLowerCase()
+      if (FILLER.has(t) && !(t === "unknown" && keepUnknown.has(k))) continue
+      // A model that copies the entity name into unrelated fields ("purpose": "Order Intake") is padding
+      if (name && t === name && !NAME_KEYS.has(k)) continue
+      out[k] = v
+    } else if (Array.isArray(v)) {
+      const arr = v.filter((x) => typeof x !== "string" || !FILLER.has(x.trim().toLowerCase()))
+      if (arr.length) out[k] = arr
+    } else if (v !== null && v !== undefined) out[k] = v
+  }
+  return out
+}
+
+/** Keep the overview to one area per mapped process: once an area exists, redirect
+ * new area names onto it instead of letting each turn invent "Sales", "Order Management"… */
+function foldAreas(ops: Record<string, unknown>[], modelSummary: string): Record<string, unknown>[] {
+  let existing: string[] = []
+  try {
+    const m = JSON.parse(modelSummary) as { areas?: { area?: string }[] }
+    existing = (m.areas ?? []).map((a) => String(a.area ?? "")).filter(Boolean)
+  } catch {
+    /* summary not JSON: no folding */
+  }
+  const known = new Set(existing.map((a) => a.toLowerCase()))
+  const firstNew = ops.find((o) => o.op === "ensureArea" && typeof o.name === "string")
+  const target = existing[0] ?? (typeof firstNew?.name === "string" ? firstNew.name : undefined)
+  if (!target) return ops
+  const out: Record<string, unknown>[] = []
+  for (const o of ops) {
+    if (o.op === "ensureArea" && typeof o.name === "string" && !known.has(o.name.toLowerCase()) && o.name !== target) continue
+    if (o.op === "ensureProcess" && typeof o.area === "string" && !known.has(o.area.toLowerCase())) o.area = target
+    if (o.op === "addQuestion" && typeof o.area === "string" && !known.has(o.area.toLowerCase())) o.area = target
+    out.push(o)
+  }
+  return out
+}
 
 /** Base44 provider: the app's built-in InvokeLLM core integration, reached through the
  * official @base44/sdk external client (anonymous mode). Structured output via
@@ -131,13 +191,20 @@ The process currently being mapped: "${body.focus}". Put new steps there unless 
 Conversation so far:
 ${transcript.join("\n")}
 
-Record every fact from the user's latest message as ops (an empty array when the conversation is just starting), and set "say" to your next single question.`
+Record every fact from the user's latest message as ops (an empty array when the conversation is just starting), and set "say" to your next single question.
+
+Output rules for ops:
+- Include ONLY the fields you actually know. Never fill a field with "unknown", "n/a", "none", "null" or an empty string; omit it instead.
+- Reuse the existing area and process names from the current model. Do not invent a new area each turn; one area per business process being mapped.
+- Every step needs an addNode with the actor who performs it, and steps must be chained with connect ops (from → to). A handoff between actors carries channel, execution and triggerKind.
+- Multiple intake channels are trigger nodes in the customer's lane (e.g. "Email order arrives"), each connected to the first step that handles it.`
 
   try {
     const raw = (await base44.integrations.Core.InvokeLLM({ prompt, response_json_schema: TURN_SCHEMA })) as unknown
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
-    return NextResponse.json({ say: data.say, ops: Array.isArray(data.ops) ? data.ops : [], provider: "Base44" })
+    const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
+    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44" })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
