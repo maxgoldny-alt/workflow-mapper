@@ -7,6 +7,7 @@
 export interface SpeechInput {
   readonly supported: boolean
   start(handlers: { onInterim?: (text: string) => void; onFinal: (text: string) => void; onEnd?: () => void; onError?: (message: string) => void }): void
+  /** Stop listening and deliver whatever was heard so far. */
   stop(): void
   readonly listening: boolean
 }
@@ -21,6 +22,9 @@ export interface VoiceProviders {
   input: SpeechInput
   output: SpeechOutput
 }
+
+/** How long the speaker has to be quiet before the answer counts as finished. */
+const SILENCE_MS = 2500
 
 /* ------------------------------------------------------------ web speech */
 
@@ -43,8 +47,19 @@ function recognitionCtor(): SRCtor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition
 }
 
+/**
+ * Continuous recognition: the browser keeps listening through pauses, and the
+ * answer is finished only after SILENCE_MS of quiet following the last words,
+ * or when the user presses stop. People think while they talk; a single-shot
+ * recognizer would cut them off at the first breath.
+ */
 class WebSpeechInput implements SpeechInput {
   private rec: SR | null = null
+  private finalText = ""
+  private interimText = ""
+  private silenceTimer: ReturnType<typeof setTimeout> | null = null
+  private handlers: Parameters<SpeechInput["start"]>[0] | null = null
+  private finished = false
   listening = false
   readonly supported = !!recognitionCtor()
 
@@ -54,31 +69,41 @@ class WebSpeechInput implements SpeechInput {
       h.onError?.("Speech recognition is not available in this browser")
       return
     }
-    this.stop()
+    this.teardown()
+    this.handlers = h
+    this.finalText = ""
+    this.interimText = ""
+    this.finished = false
     const rec = new Ctor()
     rec.lang = navigator.language || "en-US"
-    rec.continuous = false
+    rec.continuous = true
     rec.interimResults = true
-    let finalText = ""
     rec.onresult = (e) => {
       let interim = ""
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i]
-        if (r.isFinal) finalText += r[0].transcript
+        if (r.isFinal) this.finalText += (this.finalText ? " " : "") + r[0].transcript.trim()
         else interim += r[0].transcript
       }
-      if (interim) h.onInterim?.(finalText + interim)
-      if (finalText && !interim) h.onInterim?.(finalText)
+      this.interimText = interim.trim()
+      h.onInterim?.((this.finalText + (this.interimText ? " " + this.interimText : "")).trim())
+      this.armSilence()
     }
     rec.onend = () => {
-      this.listening = false
-      this.rec = null
-      if (finalText.trim()) h.onFinal(finalText.trim())
-      h.onEnd?.()
+      // Chrome ends continuous sessions on its own after a while; restart unless we finished
+      if (this.finished || !this.listening) return this.finish()
+      try {
+        rec.start()
+      } catch {
+        this.finish()
+      }
     }
     rec.onerror = (e) => {
+      if (e.error === "no-speech") return
+      if (e.error === "aborted") return
       this.listening = false
-      if (e.error !== "no-speech" && e.error !== "aborted") h.onError?.(e.error)
+      h.onError?.(e.error)
+      this.finish()
     }
     this.rec = rec
     this.listening = true
@@ -86,27 +111,79 @@ class WebSpeechInput implements SpeechInput {
   }
 
   stop() {
+    if (!this.listening) return
+    this.listening = false
+    this.finish()
+  }
+
+  private armSilence() {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer)
+    this.silenceTimer = setTimeout(() => {
+      if (this.finalText.trim()) this.stop()
+    }, SILENCE_MS)
+  }
+
+  private finish() {
+    if (this.finished) return
+    this.finished = true
+    this.listening = false
+    if (this.silenceTimer) clearTimeout(this.silenceTimer)
+    this.silenceTimer = null
+    const text = (this.finalText + (this.interimText ? " " + this.interimText : "")).trim()
+    const h = this.handlers
+    this.teardown()
+    if (text) h?.onFinal(text)
+    h?.onEnd?.()
+  }
+
+  private teardown() {
     if (this.rec) {
+      const r = this.rec
+      this.rec = null
+      r.onresult = null
+      r.onend = null
+      r.onerror = null
       try {
-        this.rec.stop()
+        r.abort()
       } catch {
         /* already stopped */
       }
     }
-    this.listening = false
   }
 }
 
 class WebSpeechOutput implements SpeechOutput {
   readonly supported = typeof window !== "undefined" && "speechSynthesis" in window
+  private voice: SpeechSynthesisVoice | null = null
+
+  /** Prefer a natural-sounding voice in the user's language when the browser ships one. */
+  private pickVoice(): SpeechSynthesisVoice | null {
+    if (this.voice) return this.voice
+    const voices = window.speechSynthesis.getVoices()
+    if (!voices.length) return null
+    const lang = (navigator.language || "en-US").toLowerCase()
+    const inLang = voices.filter((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)))
+    const pool = inLang.length ? inLang : voices
+    const score = (v: SpeechSynthesisVoice) =>
+      (/natural|neural|premium|enhanced/i.test(v.name) ? 8 : 0) +
+      (/google|microsoft/i.test(v.name) ? 3 : 0) +
+      (v.lang.toLowerCase() === lang ? 2 : 0) +
+      (v.localService ? 0 : 1)
+    this.voice = [...pool].sort((a, b) => score(b) - score(a))[0] ?? null
+    return this.voice
+  }
 
   speak(text: string, onEnd?: () => void) {
     if (!this.supported) return
     const synth = window.speechSynthesis
     synth.cancel()
     const u = new SpeechSynthesisUtterance(text)
-    u.rate = 1.02
+    const v = this.pickVoice()
+    if (v) u.voice = v
+    u.rate = 1.0
+    u.pitch = 1.0
     u.onend = () => onEnd?.()
+    u.onerror = () => onEnd?.()
     synth.speak(u)
   }
 
