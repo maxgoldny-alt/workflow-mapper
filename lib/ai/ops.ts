@@ -22,6 +22,7 @@ import {
   type Verification,
 } from "@/lib/model"
 import { clampNodeToLane, laneBoxes } from "@/lib/geometry"
+import { autoArrange, boundsOf } from "@/lib/layout"
 
 /**
  * The only way the AI changes the model. Ops are name-based so a language
@@ -87,6 +88,7 @@ export type Op =
   | { op: "addQuestion"; text: string; area?: string; process?: string; node?: string }
   | { op: "answerQuestion"; text: string; answer: string }
   | { op: "note"; process: string; node: string; notes: string }
+  | { op: "frame"; process: string; name: string; steps: string[] }
 
 export interface ApplyResult {
   model: Model
@@ -186,6 +188,7 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
     return d
   }
 
+  const touched = new Set<string>()
   for (const op of ops) {
     try {
       switch (op.op) {
@@ -281,6 +284,7 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
           // Avoid stacking exactly on another node in the same lane
           while (p.doc.nodes.some((n) => n.lane === node.lane && Math.abs(n.x - node.x) < NODE_W && Math.abs(n.y - node.y) < NODE_H)) node.x += NODE_W + 48
           p.doc.nodes.push(clampNodeToLane(p.doc.lanes, node))
+          touched.add(p.id)
           derived.push(`+ ${op.type === "decision" ? "Decision" : op.type === "trigger" ? "Trigger" : "Step"} "${node.label}" (${lane.actor})`)
           break
         }
@@ -363,6 +367,22 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
           }
           break
         }
+        case "frame": {
+          const p = findProcess(op.process)
+          if (!p) break
+          const members = (op.steps ?? []).map((s) => findNode(p, s)).filter((n): n is Node => !!n)
+          if (!members.length) break
+          p.doc.frames = p.doc.frames ?? []
+          let f = p.doc.frames.find((x) => same(x.name, op.name))
+          const b = boundsOf(members)!
+          if (!f) {
+            f = { id: newId("frame"), name: op.name.trim(), ...b, color: LANE_COLORS[(p.doc.frames.length + 3) % LANE_COLORS.length] }
+            p.doc.frames.push(f)
+            derived.push(`+ Phase "${f.name}" (${members.length} steps)`)
+          } else Object.assign(f, b)
+          touched.add(p.id)
+          break
+        }
       }
     } catch (err) {
       derived.push(`! op failed: ${(op as Op).op} (${(err as Error).message})`)
@@ -371,6 +391,8 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
 
   // Processes must have at least one lane so the canvas can render them
   for (const p of m.processes) if (!p.doc.lanes.length) p.doc = blankDoc()
+  // AI placement is crude; lay touched processes out in flow order (frames follow their steps)
+  for (const p of m.processes) if (touched.has(p.id)) p.doc = autoArrange(p.doc)
   m = { ...m }
   return { model: m, derived }
 }

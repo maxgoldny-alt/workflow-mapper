@@ -43,5 +43,6 @@ Rules:
 - Respect corrections: if the user corrects an earlier statement, update the model with the corrected fact.
 - Steps belong to the actor who performs them. Use the customer as an actor when they initiate (e.g. "Emails order").
 - Keep the map readable: one process per area for the thing being mapped; do not create areas for every channel. Represent multiple intake channels as trigger nodes in the customer's lane within the same process.
+- When several steps clearly form a phase (intake, entry, picking, shipping, billing), group them with a "frame" op named after the phase.
 - Use "connect" ops to chain steps in order. A handoff between two actors must carry channel, execution and trigger when known.
 - When the process being mapped is complete enough (start, each step, each decision branch, each handoff with channel+trigger, end state), say so briefly and ask whether there is a next process or an exception path to cover.`

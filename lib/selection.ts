@@ -6,6 +6,7 @@ export type Selection =
   | { kind: "nodes"; ids: string[] }
   | { kind: "edge"; id: string }
   | { kind: "lane"; id: string }
+  | { kind: "frame"; id: string }
   | { kind: "area"; id: string }
   | { kind: "areaLink"; id: string }
   | { kind: "process"; id: string }

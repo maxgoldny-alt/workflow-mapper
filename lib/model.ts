@@ -214,11 +214,23 @@ export interface Connection {
   messageId?: string
 }
 
+/** A named box around a group of steps (a phase). Layout only. */
+export interface Frame {
+  id: string
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+  color?: string
+}
+
 /** One swimlane board. Kept as `Doc` so the canvas code reads the same as before. */
 export interface Doc {
   lanes: Lane[]
   nodes: Node[]
   connections: Connection[]
+  frames?: Frame[]
 }
 
 export interface Process {

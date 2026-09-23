@@ -6,6 +6,7 @@ import { DiagramNode } from "./diagram-node"
 import { ConnectionLine } from "./connection-line"
 import { EdgeLabel } from "./edge-label"
 import { LanePanel } from "./lane-panel"
+import { FramePanel } from "./frame-panel"
 import { Toolbar, type Tool } from "./toolbar"
 import {
   EDGE_TYPE_META,
@@ -20,6 +21,7 @@ import {
   uniqueId,
   type Doc,
   type EdgeType,
+  type Frame,
   type Lane,
   type Model,
   type Node,
@@ -41,12 +43,13 @@ import {
   normalizeRect,
 } from "@/lib/geometry"
 import { useViewport, MIN_ZOOM, MAX_ZOOM } from "@/hooks/use-viewport"
+import { autoArrange, nodesInFrame } from "@/lib/layout"
 import { nodeStyle, edgeStyle, type View } from "@/lib/views"
 import type { Finding } from "@/lib/findings"
 import type { Selection } from "@/lib/selection"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ZoomIn, ZoomOut, Maximize2, Waves, Magnet } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, Waves, Magnet, LayoutGrid } from "lucide-react"
 
 type Drag =
   | { kind: "pan"; startClient: { x: number; y: number }; startPan: { x: number; y: number } }
@@ -55,6 +58,9 @@ type Drag =
   | { kind: "lane"; id: string }
   | { kind: "laneResize"; id: string; lastY: number }
   | { kind: "connect"; fromId: string; cursor: { x: number; y: number } }
+  | { kind: "frame"; id: string; ids: string[]; last: { x: number; y: number } }
+  | { kind: "frameResize"; id: string; start: { x: number; y: number }; startSize: { w: number; h: number } }
+  | { kind: "drawFrame"; start: { x: number; y: number }; current: { x: number; y: number } }
   | null
 
 export interface ProcessCanvasProps {
@@ -160,8 +166,26 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
       return
     }
 
+    if (tool.kind === "frame") {
+      clearEditing()
+      setDrag({ kind: "drawFrame", start: p, current: p })
+      return
+    }
+
     clearEditing()
     setDrag({ kind: "marquee", start: p, current: p, additive: e.shiftKey })
+  }
+
+  const onFrameHeaderPointerDown = (e: React.PointerEvent, frame: Frame) => {
+    setSelection({ kind: "frame", id: frame.id })
+    snapshot()
+    setDrag({ kind: "frame", id: frame.id, ids: nodesInFrame(doc, frame).map((n) => n.id), last: toCanvas(e.clientX, e.clientY) })
+  }
+
+  const onFrameResizePointerDown = (e: React.PointerEvent, frame: Frame) => {
+    setSelection({ kind: "frame", id: frame.id })
+    snapshot()
+    setDrag({ kind: "frameResize", id: frame.id, start: toCanvas(e.clientX, e.clientY), startSize: { w: frame.width, h: frame.height } })
   }
 
   const onNodePointerDown = (e: React.PointerEvent, node: Node) => {
@@ -226,6 +250,30 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
         }
       } else if (drag.kind === "connect") {
         setDrag({ ...drag, cursor: p })
+      } else if (drag.kind === "drawFrame") {
+        setDrag({ ...drag, current: p })
+      } else if (drag.kind === "frame") {
+        const dx = p.x - drag.last.x
+        const dy = p.y - drag.last.y
+        setDrag({ ...drag, last: p })
+        commit(
+          (d) => ({
+            ...d,
+            frames: (d.frames ?? []).map((f) => (f.id === drag.id ? { ...f, x: f.x + dx, y: f.y + dy } : f)),
+            nodes: d.nodes.map((n) => (drag.ids.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)),
+          }),
+          false,
+        )
+      } else if (drag.kind === "frameResize") {
+        commit(
+          (d) => ({
+            ...d,
+            frames: (d.frames ?? []).map((f) =>
+              f.id === drag.id ? { ...f, width: Math.max(160, drag.startSize.w + (p.x - drag.start.x)), height: Math.max(100, drag.startSize.h + (p.y - drag.start.y)) } : f,
+            ),
+          }),
+          false,
+        )
       }
     }
 
@@ -246,6 +294,18 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
         }
       } else if (drag.kind === "node" && drag.moved) {
         commit((d) => ({ ...d, nodes: d.nodes.map((n) => (drag.ids.includes(n.id) ? clampNodeToLane(d.lanes, snap ? snapNode(n) : n) : n)) }), false)
+      } else if (drag.kind === "frame") {
+        // Snap the carried nodes back into their lanes
+        commit((d) => ({ ...d, nodes: d.nodes.map((n) => (drag.ids.includes(n.id) ? clampNodeToLane(d.lanes, snap ? snapNode(n) : n) : n)) }), false)
+      } else if (drag.kind === "drawFrame") {
+        const rect = normalizeRect(drag.start, drag.current)
+        if (rect.width > 60 && rect.height > 40) {
+          const id = uniqueId("frame", doc.frames ?? [])
+          commit((d) => ({ ...d, frames: [...(d.frames ?? []), { id, name: "Phase", ...rect, color: "#64748b" }] }))
+          setSelection({ kind: "frame", id })
+          setEditingId(id)
+        }
+        setTool({ kind: "select" })
       } else if (drag.kind === "marquee") {
         const rect = normalizeRect(drag.start, drag.current)
         if (rect.width < 4 && rect.height < 4) {
@@ -300,6 +360,8 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
       commit((d) => ({ ...d, connections: d.connections.filter((c) => c.id !== selection.id) }))
     } else if (selection.kind === "lane") {
       commit((d) => removeLane(d, selection.id))
+    } else if (selection.kind === "frame") {
+      commit((d) => ({ ...d, frames: (d.frames ?? []).filter((f) => f.id !== selection.id) }))
     } else return
     setSelection(null)
   }, [selection, commit, setSelection])
@@ -370,6 +432,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
       if (k === "v") setTool({ kind: "select" })
       else if (k === "h") setTool({ kind: "hand" })
       else if (k === "l") createLane()
+      else if (k === "f") setTool({ kind: "frame" })
       else {
         const entry = (Object.entries(NODE_TYPE_META) as [NodeType, { shortcut: string }][]).find(([, m]) => m.shortcut === e.key)
         if (entry) setTool({ kind: "node", nodeType: entry[0] })
@@ -396,7 +459,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
     return { d: edgePath(nodeCenter(from), drag.cursor), targetId: target?.id }
   }, [drag, doc.nodes])
 
-  const cursorClass = panningMode ? (drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab") : tool.kind === "node" ? "cursor-crosshair" : "cursor-default"
+  const cursorClass = panningMode ? (drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab") : tool.kind === "node" || tool.kind === "frame" ? "cursor-crosshair" : "cursor-default"
 
   const edges = doc.connections.map((conn) => ({
     conn,
@@ -445,6 +508,29 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
                 onCancelEditing={() => setEditingId(null)}
               />
             ))}
+
+            {(doc.frames ?? []).map((f) => (
+              <FramePanel
+                key={f.id}
+                frame={f}
+                isSelected={selection?.kind === "frame" && selection.id === f.id}
+                isEditing={editingId === f.id}
+                interactive={interactive}
+                count={nodesInFrame(doc, f).length}
+                onPointerDownHeader={onFrameHeaderPointerDown}
+                onPointerDownResize={onFrameResizePointerDown}
+                onStartEditing={setEditingId}
+                onCommitName={(id, name) => {
+                  commit((d) => ({ ...d, frames: (d.frames ?? []).map((x) => (x.id === id ? { ...x, name } : x)) }))
+                  setEditingId(null)
+                }}
+                onCancelEditing={() => setEditingId(null)}
+              />
+            ))}
+
+            {drag?.kind === "drawFrame" && (
+              <div className="pointer-events-none absolute rounded-xl border-2 border-dashed border-primary bg-primary/5" style={normalizeRect(drag.start, drag.current)} />
+            )}
 
             <svg className="pointer-events-none absolute" style={{ left: -4000, top: -4000, width: 8000, height: 8000, overflow: "visible" }}>
               <g transform="translate(4000,4000)">
@@ -561,6 +647,17 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
             </button>
             <button type="button" onClick={() => setSnap((s) => !s)} className={cn("rounded p-1", snap ? "text-foreground" : "text-muted-foreground hover:bg-muted")} title="Snap to grid">
               <Magnet className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                commit((d) => autoArrange(d))
+                setTimeout(zoomToFit, 0)
+              }}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Auto-arrange: lay steps out left to right in flow order"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Arrange
             </button>
             <span className="ml-1 text-[11px] text-muted-foreground">
               {doc.nodes.length} steps · {handoffCount} handoffs

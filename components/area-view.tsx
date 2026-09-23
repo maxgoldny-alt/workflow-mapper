@@ -61,6 +61,13 @@ export function AreaView({ model, area, selection, setSelection, commit, onOpenP
                 <span className="text-sm font-semibold">{p.name}</span>
                 <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{p.purpose || "No purpose recorded"}</span>
                 <span className="mt-2 text-xs text-muted-foreground">{p.doc.lanes.map((l) => l.actor).join(" · ") || "No actors"}</span>
+                {(p.doc.frames?.length ?? 0) > 0 && (
+                  <span className="mt-1.5 flex flex-wrap gap-1">
+                    {[...(p.doc.frames ?? [])].sort((a, b) => a.x - b.x).map((f) => (
+                      <span key={f.id} className="rounded-full border px-1.5 py-0.5 text-[10px]" style={{ borderColor: `${f.color ?? "#64748b"}99`, color: f.color ?? "#64748b" }}>{f.name}</span>
+                    ))}
+                  </span>
+                )}
                 <span className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
                   <span>{steps} steps</span>
                   <span>{hs.length} handoffs</span>

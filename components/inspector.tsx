@@ -66,13 +66,14 @@ export function Inspector({ selection, model, processId, commit, onNavigate, onC
   const edge = selection?.kind === "edge" && doc ? doc.connections.find((c) => c.id === selection.id) : undefined
   const lane = selection?.kind === "lane" && doc ? laneById(doc, selection.id) : undefined
   const many = selection?.kind === "nodes" ? selection.ids : undefined
+  const frame = selection?.kind === "frame" && doc ? (doc.frames ?? []).find((f) => f.id === selection.id) : undefined
   const area = selection?.kind === "area" ? model.areas.find((a) => a.id === selection.id) : undefined
   const link = selection?.kind === "areaLink" ? model.areaLinks.find((l) => l.id === selection.id) : undefined
   const proc = selection?.kind === "process" ? processById(model, selection.id) : undefined
   const system = selection?.kind === "system" ? model.systems.find((s) => s.id === selection.id) : undefined
   const actor = selection?.kind === "actor" ? model.actors.find((a) => a.id === selection.id) : undefined
 
-  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : area ? "Process area" : link ? "Area handoff" : proc ? "Process" : system ? "System" : actor ? "Actor" : "Inspector"
+  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : frame ? "Phase frame" : area ? "Process area" : link ? "Area handoff" : proc ? "Process" : system ? "System" : actor ? "Actor" : "Inspector"
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-card">
@@ -103,6 +104,25 @@ export function Inspector({ selection, model, processId, commit, onNavigate, onC
 
         {node && doc && <NodeFields model={model} doc={doc} node={node} commit={commit} commitDoc={commitDoc} onClose={onClose} onNavigate={onNavigate} />}
         {edge && doc && <EdgeFields model={model} doc={doc} edge={edge} commitDoc={commitDoc} onClose={onClose} />}
+        {frame && doc && (
+          <>
+            <Field label="Name">
+              <Input value={frame.name} onChange={(e) => commitDoc((d) => ({ ...d, frames: (d.frames ?? []).map((f) => (f.id === frame.id ? { ...f, name: e.target.value } : f)) }))} className="h-8 text-sm" />
+            </Field>
+            <Field label="Colour">
+              <div className="flex flex-wrap gap-1.5">
+                {LANE_COLORS.map((c) => (
+                  <button key={c} type="button" onClick={() => commitDoc((d) => ({ ...d, frames: (d.frames ?? []).map((f) => (f.id === frame.id ? { ...f, color: c } : f)) }))} className={cn("h-6 w-6 rounded-full border-2", frame.color === c ? "border-foreground" : "border-transparent")} style={{ backgroundColor: c }} />
+                ))}
+              </div>
+            </Field>
+            <p className="text-xs text-muted-foreground">Drag the title to move the frame with every step inside it. Drag the corner to resize. Frames are layout only.</p>
+            <Button variant="destructive" size="sm" className="w-full" onClick={() => { commitDoc((d) => ({ ...d, frames: (d.frames ?? []).filter((f) => f.id !== frame.id) })); onClose() }}>
+              <Trash2 className="mr-2 h-3 w-3" /> Delete frame (keeps the steps)
+            </Button>
+          </>
+        )}
+
         {lane && doc && <LaneFields model={model} doc={doc} lane={lane} commit={commit} commitDoc={commitDoc} onClose={onClose} />}
         {area && <AreaFields model={model} area={area} commit={commit} onNavigate={onNavigate} onClose={onClose} />}
         {link && <LinkFields model={model} link={link} commit={commit} onClose={onClose} />}

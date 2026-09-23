@@ -20,7 +20,7 @@ const OP_SCHEMA = {
   properties: {
     op: {
       type: "string",
-      enum: ["ensureArea", "ensureProcess", "ensureActor", "ensurePlatform", "ensureSystem", "ensureDataObject", "addNode", "connect", "link", "addQuestion", "answerQuestion", "note"],
+      enum: ["ensureArea", "ensureProcess", "ensureActor", "ensurePlatform", "ensureSystem", "ensureDataObject", "addNode", "connect", "link", "addQuestion", "answerQuestion", "note", "frame"],
     },
     name: { type: "string" },
     area: { type: "string" },
@@ -59,6 +59,7 @@ const OP_SCHEMA = {
     answer: { type: "string" },
     node: { type: "string" },
     verification: { type: "string", enum: ["reported", "inferred"] },
+    steps: { type: "array", items: { type: "string" } },
   },
 } as const
 
@@ -106,6 +107,7 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 - addQuestion {text, area?, process?, node?}
 - answerQuestion {text (existing question), answer}
 - note {process, node, notes}
+- frame {process, name, steps: [step labels]}  — group steps into a named phase ("Order entry", "Shipping") once a phase is clear
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
 type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string }

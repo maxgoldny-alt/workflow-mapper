@@ -24,11 +24,12 @@ import {
   MoreHorizontal,
   Hash,
   MessageCircle,
+  Frame,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { NODE_TYPE_META, NODE_TYPES, type Channel, type NodeType } from "@/lib/model"
 
-export type Tool = { kind: "select" } | { kind: "hand" } | { kind: "node"; nodeType: NodeType }
+export type Tool = { kind: "select" } | { kind: "hand" } | { kind: "node"; nodeType: NodeType } | { kind: "frame" }
 
 export const nodeIcons: Record<NodeType, typeof Hand> = {
   step: ListChecks,
@@ -104,6 +105,7 @@ export function Toolbar({ tool, onToolChange, onAddLane }: ToolbarProps) {
       <div className="my-1 h-px w-7 bg-border" />
 
       {button(false, onAddLane, Rows3, "Add actor lane — L")}
+      {button(tool.kind === "frame", () => onToolChange({ kind: "frame" }), Frame, "Phase frame — F (drag to draw around steps)")}
     </div>
   )
 }
