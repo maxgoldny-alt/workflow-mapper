@@ -394,7 +394,7 @@ function SectionFrame({ s, selected, onSelect, onDragStart, onOpen, onAsk, onNod
       >
         <span className="truncate text-[13px] font-semibold" title={s.area.purpose || s.area.name}>{s.area.name}</span>
         {s.area.side && <span className="text-[10px] text-muted-foreground">side path</span>}
-        <button type="button" onClick={(e) => { e.stopPropagation(); onOpen() }} className="ml-auto text-[10px] text-primary hover:underline">{s.mapped ? "Open" : "Map"}</button>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onOpen() }} className="ml-auto text-[10px] text-primary hover:underline">{s.mapped ? "Outline" : "Map"}</button>
       </div>
 
       {s.nodes.map((n) => (

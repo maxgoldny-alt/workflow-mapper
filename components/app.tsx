@@ -32,7 +32,7 @@ import { OverviewCanvas } from "./overview-canvas"
 import { LoopView } from "./loop-view"
 import { LoopMap } from "./loop-map"
 import { loopModel, type BusinessType } from "@/lib/loops"
-import { AreaView } from "./area-view"
+import { StageOutline } from "./stage-outline"
 import { ProcessCanvas } from "./process-canvas"
 import { Inspector } from "./inspector"
 import { BottomTray } from "./bottom-tray"
@@ -105,11 +105,8 @@ export default function App() {
     setSelection(s)
   }, [])
 
-  const openArea = (areaId: string) => {
-    const procs = model.processes.filter((p) => p.areaId === areaId)
-    if (procs.length === 1) navigate({ level: "process", processId: procs[0].id })
-    else navigate({ level: "area", areaId })
-  }
+  /** Level 2: the stage outline. The canvas (level 3) is reached from there. */
+  const openArea = (areaId: string) => navigate({ level: "area", areaId })
 
   const commitDoc = useCallback(
     (fn: (d: Doc) => Doc, hist = true) => {
@@ -203,17 +200,10 @@ export default function App() {
     navigate({ level: "company" })
   }
 
-  /** Give a stage its first workflow and open it. */
-  const mapArea = (areaId: string) => {
-    const area = model.areas.find((a) => a.id === areaId)
-    const existing = model.processes.find((p) => p.areaId === areaId)
-    if (existing) return navigate({ level: "process", processId: existing.id })
-    const id = newId("proc")
-    commit((m) => ({ ...m, processes: [...m.processes, { id, areaId, name: area?.name ?? "Workflow", doc: blankDoc() }] }))
-    navigate({ level: "process", processId: id })
-  }
+  /** "Map this stage": capture steps in the outline first; it creates the workflow on the first step. */
+  const mapArea = (areaId: string) => navigate({ level: "area", areaId })
 
-  /** Point the interviewer at one stage. */
+  /** Point the interviewer at one stage and open its outline. */
   const askAbout = (areaId: string) => {
     const area = model.areas.find((a) => a.id === areaId)
     if (!area) return
@@ -225,7 +215,7 @@ export default function App() {
       commit((m) => ({ ...m, processes: [...m.processes, { id, areaId, name: area.name, doc: blankDoc() }] }))
     }
     commit((m) => ({ ...m, interview: { ...m.interview, focusProcessId: pid } }), false)
-    navigate({ level: "process", processId: pid })
+    navigate({ level: "area", areaId })
     setDrawerOpen(true)
   }
 
@@ -300,6 +290,8 @@ export default function App() {
         <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Crumb active={nav.level === "company"} onClick={() => navigate({ level: "company" })}>{model.company.name}</Crumb>
           {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Operating Map</span>}
+          {nav.level === "area" && <span className="ml-1 text-[11px] text-muted-foreground">Stage outline</span>}
+          {nav.level === "process" && <span className="ml-1 text-[11px] text-muted-foreground">Workflow</span>}
           {currentArea && (
             <>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -373,7 +365,17 @@ export default function App() {
             </div>
           )}
           {nav.level === "area" && currentArea && (
-            <AreaView model={model} area={currentArea} selection={selection} setSelection={setSelection} commit={commit} onOpenProcess={(id) => navigate({ level: "process", processId: id })} />
+            <StageOutline
+              model={model}
+              area={currentArea}
+              findings={findings}
+              selection={selection}
+              setSelection={setSelection}
+              commit={commit}
+              onOpenWorkflow={(id) => navigate({ level: "process", processId: id })}
+              onAskAbout={askAbout}
+              onBack={() => navigate({ level: "company" })}
+            />
           )}
           {nav.level === "process" && currentProcess && (
             <ProcessCanvas key={currentProcess.id} model={model} process={currentProcess} findings={findings} view={view} selection={selection} setSelection={setSelection} commitDoc={commitDoc} snapshot={snapshot} undo={undo} redo={redo} />
