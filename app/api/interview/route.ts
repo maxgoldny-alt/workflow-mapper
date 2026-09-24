@@ -174,7 +174,7 @@ function stripFiller(op: unknown): Record<string, unknown> | null {
 
 /** Keep the overview to one area per mapped process: once an area exists, redirect
  * new area names onto it instead of letting each turn invent "Sales", "Order Management"… */
-function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userText: string | null, focusName?: string): Record<string, unknown>[] {
+function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userText: string | null): Record<string, unknown>[] {
   let existing: string[] = []
   let processes: string[] = []
   try {
@@ -192,15 +192,7 @@ function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userTex
     return words.length > 0 && words.filter((w) => said.includes(w)).length >= Math.min(2, words.length)
   }
   const knownProc = new Set(processes.map((p) => p.toLowerCase()))
-  const focus = focusName && processes.find((p) => p.toLowerCase() === focusName.toLowerCase()) ? focusName : processes[processes.length - 1]
-  // With a business loop the stages already exist; new work belongs under the focused stage
-  try {
-    const m = JSON.parse(modelSummary) as { areas?: { area?: string; processes?: { process?: string }[] }[] }
-    const owner = (m.areas ?? []).find((a) => (a.processes ?? []).some((p) => String(p.process ?? "").toLowerCase() === (focus ?? "").toLowerCase()))?.area
-    if (owner) existing = [String(owner), ...existing.filter((a) => a !== owner)]
-  } catch {
-    /* no summary */
-  }
+  const focus = processes[processes.length - 1]
   ops = ops.filter((o) => !(o.op === "ensureProcess" && typeof o.name === "string" && !knownProc.has(o.name.toLowerCase()) && processes.length > 0 && !mentioned(o.name)))
   if (focus) {
     const allowed = new Set([...knownProc, ...ops.filter((o) => o.op === "ensureProcess" && typeof o.name === "string").map((o) => (o.name as string).toLowerCase())])
@@ -262,7 +254,7 @@ Output rules for ops:
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
     const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
-    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary, body.userText, body.focus), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
+    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary, body.userText), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
