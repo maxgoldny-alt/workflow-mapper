@@ -252,9 +252,9 @@ function serviceBusiness(): Model {
   ]
   const now = Date.now()
   m.questions = [
-    { id: "q1", text: "Does Jobber sync invoices to QuickBooks, or does Dana re-enter them?", ref: { areaId: stage("Invoice / Payment").id }, status: "open", source: "ai", createdAt: now },
+    { id: "q1", text: "Does Jobber sync invoices to QuickBooks, or does Dana re-enter them?", ref: { areaId: stage("Invoice & get paid").id }, status: "open", source: "ai", createdAt: now },
     { id: "q2", text: "How does Mike know a site visit is booked: does Dana text him, or does he check Jobber?", ref: { processId: "proc_inquiry", nodeId: "visit" }, status: "open", source: "ai", createdAt: now },
-    { id: "q3", text: "What happens when a customer never answers the quote email?", ref: { areaId: stage("Approval").id }, status: "open", source: "ai", createdAt: now },
+    { id: "q3", text: "What happens when a customer never answers the quote email?", ref: { areaId: stage("Get approval").id }, status: "open", source: "ai", createdAt: now },
   ]
   return m
 }
