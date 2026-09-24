@@ -45,7 +45,7 @@ export interface StagePageProps {
   undo: () => void
   redo: () => void
   onAskAbout: (areaId: string) => void // opens the AI drawer focused on this stage
-  onBack: () => void // back to the Operating Map
+  onBack: () => void // back to the Overview
   tab: StageTab
   onTab: (t: StageTab) => void
 }
@@ -90,7 +90,7 @@ export function StagePage({ model, area, processId, findings, selection, setSele
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       <div className="shrink-0 border-b border-border bg-card px-6 pt-4">
         <button type="button" onClick={onBack} className="mb-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" /> Operating Map
+          <ArrowLeft className="h-3.5 w-3.5" /> Overview
         </button>
         <div className="flex flex-wrap items-center gap-3">
           <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />

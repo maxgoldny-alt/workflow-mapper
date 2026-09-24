@@ -1,7 +1,7 @@
 import { AREA_COLORS, blankModel, newId, type Model, type ProcessArea, type SketchNode } from "./model"
 
 /**
- * Business loop starters. A loop is the full operating cycle of a business at
+ * Overview starters: the typical workflow stages of a kind of business, in the order work flows. The overview is the full operating chain of a business at
  * a glance: one ProcessArea per stage, linked in order. Each stage carries a
  * sketch of its key nodes so the map reads as a flow before anything is
  * mapped in detail; a mapped workflow replaces the sketch.
@@ -27,13 +27,12 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; hint: string; st
     label: "Retail / Storefront",
     hint: "Walk-in customers, POS, inventory",
     stages: [
-      { name: "Foot Traffic / Ads", nodes: [src("Walk-in"), src("Local ads"), src("Repeat customer")] },
-      { name: "Product Selection", nodes: [s("Browse / ask staff"), d("In stock?")] },
-      { name: "POS Sale", nodes: [s("Ring up at POS"), s("Payment taken")] },
-      { name: "Inventory Update", nodes: [s("Stock count adjusts"), d("Below reorder point?")] },
+      { name: "Bring customers in", nodes: [src("Walk-in"), src("Local ads"), src("Repeat customer")] },
+      { name: "Sell", nodes: [s("Browse / ask staff"), d("In stock?"), s("Ring up at POS")] },
       { name: "Returns", side: true, nodes: [x("Return / exchange"), s("Refund at POS")] },
-      { name: "Reorder / Purchasing", nodes: [s("Order from supplier"), s("Receive delivery")] },
-      { name: "Reporting", nodes: [s("Daily sales report"), s("Books updated")] },
+      { name: "Buy stock", nodes: [d("Below reorder point?"), s("Order from supplier")] },
+      { name: "Receive & shelve", nodes: [s("Check the delivery"), s("Update stock count")] },
+      { name: "Close the day", nodes: [s("Count the till"), s("Sales to the books")] },
     ],
   },
   {
@@ -41,13 +40,13 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; hint: string; st
     label: "Restaurant / Food",
     hint: "Orders, kitchen, service, payment",
     stages: [
-      { name: "Customer Source", nodes: [src("Walk-in"), src("Online order"), src("Phone")] },
-      { name: "Order Intake", nodes: [s("Server / app takes order"), s("Ticket to kitchen")] },
-      { name: "Kitchen / Prep", nodes: [s("Cook"), d("Order correct?")] },
-      { name: "Serve / Deliver", nodes: [s("Serve table"), s("Hand to driver")] },
-      { name: "Payment", nodes: [s("Check / online payment"), s("Tip out")] },
-      { name: "Inventory / Labor", nodes: [s("Count stock"), s("Schedule staff")] },
-      { name: "Return Visit", nodes: [s("Loyalty / review"), s("Reservation")] },
+      { name: "Take orders", nodes: [src("Walk-in"), src("Online order"), src("Phone"), s("Ticket to kitchen")] },
+      { name: "Cook", nodes: [s("Prep and cook"), d("Order correct?")] },
+      { name: "Serve / deliver", nodes: [s("Serve the table"), s("Hand to driver")] },
+      { name: "Complaints & refunds", side: true, nodes: [x("Wrong or late order"), s("Comp or refund")] },
+      { name: "Get paid", nodes: [s("Check / online payment"), s("Tip out")] },
+      { name: "Buy supplies", nodes: [s("Count stock"), s("Order from suppliers")] },
+      { name: "Close the day", nodes: [s("Cash out"), s("Sales to the books")] },
     ],
   },
   {
@@ -55,15 +54,15 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; hint: string; st
     label: "Service Business",
     hint: "Leads, quotes, jobs, invoices",
     stages: [
-      { name: "Lead Source", nodes: [src("Referral"), src("Website"), src("Repeat customer")] },
-      { name: "Inquiry", nodes: [s("Phone / email / form"), s("Admin captures request"), d("Missing info?")] },
-      { name: "Estimate / Quote", nodes: [s("Site visit"), s("Write quote"), s("Send quote")] },
-      { name: "Approval", nodes: [d("Customer approves?"), s("Deposit")] },
-      { name: "Scheduling", nodes: [s("Book crew / slot"), s("Confirm with customer")] },
-      { name: "Work Performed", nodes: [s("Do the job"), d("Work complete?")] },
-      { name: "Exceptions", side: true, nodes: [x("Change order"), x("Callback / rework")] },
-      { name: "Invoice / Payment", nodes: [s("Invoice"), s("Payment received"), s("Close job")] },
-      { name: "Review / Repeat", nodes: [s("Review request"), s("Reminder / follow-up")] },
+      { name: "Get leads", nodes: [src("Referral"), src("Website"), src("Repeat customer")] },
+      { name: "Take inquiries", nodes: [s("Phone / email / form"), s("Admin captures request"), d("Missing info?")] },
+      { name: "Quote", nodes: [s("Site visit"), s("Write quote"), s("Send quote")] },
+      { name: "Get approval", nodes: [d("Customer approves?"), s("Deposit")] },
+      { name: "Schedule", nodes: [s("Book crew / slot"), s("Confirm with customer")] },
+      { name: "Do the work", nodes: [s("Do the job"), d("Work complete?")] },
+      { name: "Changes & callbacks", side: true, nodes: [x("Change order"), x("Callback / rework")] },
+      { name: "Invoice & get paid", nodes: [s("Invoice"), s("Payment received"), s("Close job")] },
+      { name: "Follow up", nodes: [s("Review request"), s("Reminder / follow-up")] },
     ],
   },
   {
@@ -71,14 +70,14 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; hint: string; st
     label: "Manufacturing / Distribution",
     hint: "Orders, planning, production, shipping",
     stages: [
-      { name: "Customer Orders", nodes: [src("Email / EDI"), src("Sales rep"), src("Portal")] },
-      { name: "Order Entry", nodes: [s("Enter order in ERP"), d("Credit / stock OK?")] },
-      { name: "Planning", nodes: [s("Schedule production / pick"), s("Materials pulled")] },
-      { name: "Production / Picking", nodes: [s("Build / pick"), d("QC pass?")] },
-      { name: "Exceptions", side: true, nodes: [x("Shortage / backorder"), x("Rework")] },
-      { name: "Shipping / Delivery", nodes: [s("Pack & label"), s("Carrier pickup")] },
-      { name: "Invoicing", nodes: [s("Invoice"), s("Payment received")] },
-      { name: "Inventory Visibility", nodes: [s("Stock updated"), s("Reorder")] },
+      { name: "Take orders", nodes: [src("Email / EDI"), src("Sales rep"), src("Portal"), d("Credit / stock OK?")] },
+      { name: "Plan", nodes: [s("Schedule production / pick"), s("Check materials")] },
+      { name: "Buy materials", nodes: [s("Raise PO"), s("Receive materials")] },
+      { name: "Produce / pick", nodes: [s("Build / pick"), d("QC pass?")] },
+      { name: "Rework & shortages", side: true, nodes: [x("Shortage / backorder"), x("Rework")] },
+      { name: "Ship", nodes: [s("Pack & label"), s("Carrier pickup")] },
+      { name: "Invoice", nodes: [s("Invoice"), s("Send to customer")] },
+      { name: "Get paid", nodes: [s("Payment received"), s("Chase overdue")] },
     ],
   },
   {
@@ -86,28 +85,26 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; hint: string; st
     label: "Ecommerce",
     hint: "Traffic, checkout, fulfilment, returns",
     stages: [
-      { name: "Traffic", nodes: [src("Ads"), src("Search"), src("Email list")] },
-      { name: "Product Page", nodes: [s("Browse"), d("Add to cart?")] },
-      { name: "Checkout", nodes: [s("Pay"), s("Order confirmation")] },
-      { name: "Fulfillment", nodes: [s("Pick & pack"), d("In stock?")] },
-      { name: "Shipping", nodes: [s("Label"), s("Carrier pickup"), s("Tracking sent")] },
-      { name: "Support / Returns", side: true, nodes: [x("Where is my order?"), x("Return / refund")] },
-      { name: "Retention", nodes: [s("Review request"), s("Repeat purchase")] },
+      { name: "Bring traffic in", nodes: [src("Ads"), src("Search"), src("Email list")] },
+      { name: "Sell online", nodes: [s("Checkout"), s("Order confirmation")] },
+      { name: "Pick & pack", nodes: [d("In stock?"), s("Pick & pack")] },
+      { name: "Ship", nodes: [s("Label"), s("Carrier pickup"), s("Tracking sent")] },
+      { name: "Returns & support", side: true, nodes: [x("Where is my order?"), x("Return / refund")] },
+      { name: "Restock", nodes: [s("Reorder from supplier"), s("Receive stock")] },
+      { name: "Reconcile payouts", nodes: [s("Payouts to bank"), s("Sales to the books")] },
     ],
   },
   {
     id: "custom",
     label: "Custom",
-    hint: "Generic loop you rename",
+    hint: "Generic stages you rename",
     stages: [
-      { name: "Demand / Customer Source", nodes: [src("Referral"), src("Website"), src("Repeat customer")] },
-      { name: "Intake", nodes: [s("Phone / email / form"), s("Admin captures request"), d("Missing info?")] },
-      { name: "Sales / Approval", nodes: [s("Quote / proposal"), d("Approved?")] },
-      { name: "Work / Fulfillment", nodes: [s("Schedule / produce / perform"), d("Work complete?")] },
+      { name: "Win work", nodes: [src("Referral"), src("Website"), src("Repeat customer")] },
+      { name: "Take the order", nodes: [s("Phone / email / form"), s("Capture the request"), d("Missing info?")] },
+      { name: "Do the work", nodes: [s("Schedule / produce / perform"), d("Done right?")] },
       { name: "Exceptions", side: true, nodes: [x("Rework / change"), x("Complaint")] },
-      { name: "Payment / Closeout", nodes: [s("Invoice"), s("Payment received"), s("Close job / order")] },
-      { name: "Records / Reporting", nodes: [s("Books updated"), s("Reports")] },
-      { name: "Follow-up / Repeat", nodes: [s("Review / thank-you"), s("Reminder")] },
+      { name: "Invoice", nodes: [s("Invoice"), s("Send to customer")] },
+      { name: "Get paid", nodes: [s("Payment received"), s("Books updated")] },
     ],
   },
 ]
@@ -122,7 +119,7 @@ export function loopAreas(stages: StageStarter[]): { areas: ProcessArea[]; links
   return { areas, links }
 }
 
-/** A fresh company with a shallow loop and nothing mapped yet. */
+/** A fresh company with a shallow overview and nothing mapped yet. */
 export function loopModel(type: BusinessType, companyName = "New company"): Model {
   const m = blankModel(companyName)
   const bt = businessType(type)

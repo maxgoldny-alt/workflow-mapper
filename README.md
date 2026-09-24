@@ -2,15 +2,15 @@
 
 A clean map of how a business actually runs today, end to end. Not how it should run: how it runs, dysfunction included.
 
-A business owner opens it, picks the kind of business, and gets the operating loop on one screen. From there they talk through each stage (or type the steps in) and the map fills itself. The same facts feed the diagram, the SOP, the data-flow view, and the diagnostics: manual handoffs, re-entered data, one-person dependencies, open questions. The result can go to a consultant, an automation builder, or an AI agent.
+A business owner opens it, tells the AI what the business does (or picks an industry template), and gets an overview of every stage in order on one screen. From there they talk through each stage (or type the steps in) and the map fills itself. The same facts feed the diagram, the SOP, the data-flow view, and the diagnostics: manual handoffs, re-entered data, one-person dependencies, open questions. The result can go to a consultant, an automation builder, or an AI agent.
 
 ## Three zoom levels, one model
 
 ```
-Operating Map  →  Stage page (Steps · Diagram · SOP · Data)  →  Edit by hand
+Overview  →  Stage page (Steps · Diagram · SOP · Data)  →  Edit by hand
 ```
 
-- **Operating Map**: every stage of the business loop on one screen, as a loop, not a line. Mapped stages show their key steps; unmapped stages show what is typical for that kind of business, dashed. Exceptions sit on a side path. Gap pills point at what the map has found.
+- **Overview**: the table of contents. Every workflow stage in the order work flows, ending where the business ends (a loop back exists only if you add one). Mapped stages show their key steps and a depth meter; unmapped stages show what is typical, dashed. Exceptions sit on a side path. Pills name what the map shows is broken: double entry, manual handoffs, one-person dependencies, disconnected steps. Click a connector to say what moves between two stages.
 - **Stage page**: one stage, four tabs on the same data. **Steps** is the fast capture layer: add, rename, reassign, delete steps without a canvas. **Diagram** is the swimlane view (read-mostly). **SOP** is the generated procedure. **Data** shows systems used, what moves between people, and data in/out per step.
 - **Edit by hand**: the full swimlane editor, opened on purpose from the Diagram tab. Drawing tools, connect handles, lanes, frames, overlays live only here.
 

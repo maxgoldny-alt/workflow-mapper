@@ -219,19 +219,19 @@ const inquiryToQuote: Doc = {
 function serviceBusiness(): Model {
   const m = loopModel("service", "Northside Plumbing")
   const areaByName = (n: string) => m.areas.find((a) => a.name === n)!
-  areaByName("Approval").sketch = [{ label: "Customer replies by email or phone", kind: "step" }, { label: "Approved?", kind: "decision" }, { label: "Deposit paid", kind: "step" }]
-  areaByName("Exceptions").sketch = [{ label: "Change order on site", kind: "exception" }, { label: "Callback / rework", kind: "exception" }]
+  areaByName("Get approval").sketch = [{ label: "Customer replies by email or phone", kind: "step" }, { label: "Approved?", kind: "decision" }, { label: "Deposit paid", kind: "step" }]
+  areaByName("Changes & callbacks").sketch = [{ label: "Change order on site", kind: "exception" }, { label: "Callback / rework", kind: "exception" }]
   m.company.description = "Residential plumbing and drain repair, two vans, five people"
   const stage = (name: string) => m.areas.find((a) => a.name === name)!
-  stage("Lead Source").purpose = "Google, referrals, yard signs"
-  stage("Inquiry").purpose = "Calls and website form"
-  stage("Estimate / Quote").purpose = "Site visit, quote in Jobber"
-  stage("Approval").purpose = "Customer accepts by email or phone"
-  stage("Scheduling").purpose = "Dana books the van in Jobber"
-  stage("Work Performed").purpose = "Tech does the job, photos in Jobber"
-  stage("Invoice / Payment").purpose = "Invoice from Jobber, card or check"
-  stage("Review / Repeat").purpose = "Google review request, reminders"
-  m.processes = [{ id: "proc_inquiry", areaId: stage("Inquiry").id, name: "Inquiry to quote", purpose: "From the first call or form to a quote in the customer's inbox", doc: inquiryToQuote }]
+  stage("Get leads").purpose = "Google, referrals, yard signs"
+  stage("Take inquiries").purpose = "Calls and website form"
+  stage("Quote").purpose = "Site visit, quote in Jobber"
+  stage("Get approval").purpose = "Customer accepts by email or phone"
+  stage("Schedule").purpose = "Dana books the van in Jobber"
+  stage("Do the work").purpose = "Tech does the job, photos in Jobber"
+  stage("Invoice & get paid").purpose = "Invoice from Jobber, card or check"
+  stage("Follow up").purpose = "Google review request, reminders"
+  m.processes = [{ id: "proc_inquiry", areaId: stage("Take inquiries").id, name: "Inquiry to quote", purpose: "From the first call or form to a quote in the customer's inbox", doc: inquiryToQuote }]
   m.actors = [
     { id: "act_customer", name: "Customer", kind: "customer" },
     { id: "act_dana", name: "Dana (office)", kind: "person", notes: "Answers phones, runs Jobber and QuickBooks" },
@@ -262,10 +262,10 @@ function serviceBusiness(): Model {
 /* ---------------------------------------------------------- registry */
 
 export const templates: Template[] = [
-  { id: "service-sample", name: "Northside Plumbing (sample)", description: "Service business loop with one mapped workflow", build: serviceBusiness },
+  { id: "service-sample", name: "Northside Plumbing (sample)", description: "Service business with one mapped workflow", build: serviceBusiness },
   { id: "order-to-cash", name: "Order to Cash (sample)", description: "Three areas: intake, fulfilment, billing", build: orderToCash },
   { id: "operational-core", name: "Operational Core", description: "One area, one detailed process", build: operationalCore },
-  ...BUSINESS_TYPES.map((b) => ({ id: `loop-${b.id}`, name: `${b.label} loop`, description: b.hint, build: () => loopModel(b.id) })),
+  ...BUSINESS_TYPES.map((b) => ({ id: `loop-${b.id}`, name: `${b.label} starter`, description: b.hint, build: () => loopModel(b.id) })),
   { id: "empty", name: "Empty company", description: "Start from nothing", build: () => blankModel("My company") },
 ]
 void loopAreas

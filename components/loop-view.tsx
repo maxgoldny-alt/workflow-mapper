@@ -30,7 +30,7 @@ interface LoopViewProps {
 }
 
 /**
- * The Business Loop: the full operating cycle as a row of stage cards.
+ * The Overview as cards: every stage in order as a row of cards.
  * Shallow on purpose. Each card summarises what sits under it; drilling in
  * opens the existing area/process depth.
  */
@@ -54,7 +54,7 @@ export function LoopView({ model, findings, selection, setSelection, commit, onO
       <div className="mx-auto max-w-[1400px] px-6 py-5">
         <div className="mb-4 flex items-end gap-3">
           <div>
-            <h2 className="text-base font-semibold">Business Loop</h2>
+            <h2 className="text-base font-semibold">Overview</h2>
             <p className="text-xs text-muted-foreground">
               {model.company.industry ? `${model.company.industry} · ` : ""}
               {areas.length} stages · {model.processes.length} workflows mapped · click a stage for details, double-click to drill in
@@ -67,8 +67,8 @@ export function LoopView({ model, findings, selection, setSelection, commit, onO
 
         {areas.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-card/80 p-8 text-center">
-            <h3 className="text-base font-semibold">No loop yet</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Add stages by hand, or let the interviewer lay out the loop from what you tell it.</p>
+            <h3 className="text-base font-semibold">No stages yet</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Add stages by hand, or let the interviewer lay out the stages from what you tell it.</p>
             <div className="mt-4 flex justify-center gap-2" onPointerDown={(e) => e.stopPropagation()}>
               <Button onClick={onStartInterview}><Sparkles className="mr-1.5 h-4 w-4" /> Start with AI</Button>
               <Button variant="outline" onClick={addStage}><Plus className="mr-1 h-4 w-4" /> Add stage</Button>

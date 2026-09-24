@@ -2,12 +2,15 @@
 
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ZoomIn, ZoomOut, Maximize2, HelpCircle, Diamond, Zap, AlertTriangle, ListChecks, Users, Server, Hand } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, HelpCircle, Diamond, Zap, AlertTriangle, ListChecks, Users, Server, Hand, Unplug, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   areaActors,
+  areaManualHandoffs,
   areaSystems,
+  handoffs,
+  newId,
   openQuestions,
   processesInArea,
   type Model,
@@ -21,11 +24,12 @@ import { useViewport, MIN_ZOOM, MAX_ZOOM } from "@/hooks/use-viewport"
 import { edgePath } from "@/lib/geometry"
 
 /**
- * The Operating Map: the business end to end, drawn as framed stages with
- * their key steps, real connectors between them, exceptions off to the side,
- * and a loop back to demand. Everything on it answers one question: where
- * does work come from, who touches it, where does it hand off, where is it
- * weak, and where do I drill in next.
+ * The Overview: the business end to end as an ordered chain of workflow
+ * stages, each with its key steps, exceptions off to the side. It is a table
+ * of contents: shallow on purpose, with each stage's depth legible from
+ * outside. It ends where the business ends; a loop back exists only when the
+ * user adds one. Every mark answers: where does work go, who touches it,
+ * where is it weak, and where do I dig next.
  */
 
 interface LoopMapProps {
@@ -39,6 +43,7 @@ interface LoopMapProps {
   onNavigate: (nav: Nav, selection?: Selection) => void
   commit: (fn: (m: Model) => Model, history?: boolean) => void
   snapshot: () => void
+  onStartInterview: () => void
 }
 
 /* ---------------------------------------------------------------- layout */
@@ -47,7 +52,6 @@ const SEC_W = 236
 const NODE_H = 44
 const NODE_GAP = 10
 const HEAD_H = 40
-const META_H = 44
 const PAD = 12
 const GAP_X = 64
 const LEFT = 40
@@ -67,7 +71,7 @@ interface MapNode {
 interface Gap {
   key: string
   label: string
-  severity: "red" | "orange"
+  severity: "red" | "orange" | "grey"
   icon: typeof HelpCircle
 }
 
@@ -83,7 +87,45 @@ interface Section {
   gaps: Gap[]
   mapped: boolean
   openQuestions: number
+  depth: Depth
 }
+
+/** How far a stage has been mapped, legible from the overview without opening it. */
+interface Depth {
+  level: 0 | 1 | 2 | 3
+  steps: number
+  people: number
+  systems: number
+  handoffs: number
+  handoffsKnown: number
+}
+
+function depthOf(model: Model, area: ProcessArea): Depth {
+  const procs = processesInArea(model, area.id)
+  let steps = 0
+  let unnamed = 0
+  let hs = 0
+  let known = 0
+  const people = new Set<string>()
+  for (const p of procs) {
+    for (const n of p.doc.nodes) {
+      if (n.type !== "step" && n.type !== "decision" && n.type !== "trigger") continue
+      steps++
+      const lane = p.doc.lanes.find((l) => l.id === n.lane)
+      if (!lane || /^actor \d+$/i.test(lane.actor)) unnamed++
+      else people.add(lane.actor)
+    }
+    for (const h of handoffs(p.doc)) {
+      hs++
+      if (h.edge.channel !== "unknown") known++
+    }
+  }
+  const systems = areaSystems(model, area.id).length
+  const level: Depth["level"] = steps === 0 ? 0 : unnamed > 0 || people.size === 0 ? 1 : hs > 0 && known < hs ? 2 : systems === 0 && hs > 0 ? 2 : 3
+  return { level, steps, people: people.size, systems, handoffs: hs, handoffsKnown: known }
+}
+
+const metaLines = (s: { actors: string[]; systems: string[] }) => (s.actors.length ? 1 : 0) + (s.systems.length ? 1 : 0)
 
 /** Up to four key nodes from a mapped workflow: its intake, first step, first decision, last step. */
 function keyNodesFromProcess(model: Model, areaId: string): MapNode[] {
@@ -116,15 +158,17 @@ function gapsFor(model: Model, findings: Finding[], area: ProcessArea): Gap[] {
   const add = (n: number, key: string, label: string, severity: Gap["severity"], icon: typeof HelpCircle) => {
     if (n > 0) gaps.push({ key, label: n > 1 ? `${label} ×${n}` : label, severity, icon })
   }
-  add(has("manual-reentry", "duplicate-entry"), "reentry", "Re-entered by hand", "red", Hand)
-  add(has("unknown-trigger", "unknown-channel", "unknown-execution"), "handoff", "Unclear handoff", "red", Zap)
-  add(has("human-polling"), "waiting", "Someone checks by hand", "orange", HelpCircle)
-  add(has("unknown-system"), "system", "Unknown system", "orange", Server)
-  add(has("undefined-owner", "single-person-dependency"), "owner", "Owner unclear / one person", "orange", Users)
-  add(has("single-branch-decision"), "branch", "Missing decision branch", "orange", Diamond)
+  // What is broken today, as the map shows it
+  add(has("manual-reentry", "duplicate-entry"), "reentry", "Double entry", "red", Hand)
+  add(areaManualHandoffs(model, area.id), "manual", "Manual handoff", "orange", Hand)
+  add(has("human-polling"), "waiting", "Checked by hand", "orange", HelpCircle)
+  add(has("single-person-dependency", "undefined-owner"), "owner", "One-person dependency", "orange", Users)
+  add(has("disconnected-step", "no-output", "unconsumed-output"), "disconnected", "Disconnected", "orange", Unplug)
+  // What nobody has said yet
+  add(has("unknown-trigger", "unknown-channel", "unknown-execution", "unknown-system"), "unknown", "Not known yet", "grey", HelpCircle)
   const q = openQuestions(model).filter((x) => x.ref.areaId === area.id || (x.ref.processId && pids.has(x.ref.processId))).length
-  add(q, "questions", "Open question", "orange", HelpCircle)
-  return gaps.slice(0, 3)
+  add(q, "questions", "Open question", "grey", HelpCircle)
+  return gaps.slice(0, 4)
 }
 
 function layout(model: Model, findings: Finding[]): { sections: Section[]; main: Section[]; width: number; height: number } {
@@ -135,8 +179,11 @@ function layout(model: Model, findings: Finding[]): { sections: Section[]; main:
     const sketch: MapNode[] = (area.sketch ?? []).slice(0, 4).map((n, i) => ({ id: `${area.id}_s${i}`, label: n.label, kind: n.kind, x: 0, y: 0 }))
     const nodes = mapped ? fromProcess : sketch
     const gaps = gapsFor(model, findings, area)
-    const h = HEAD_H + PAD + Math.max(1, nodes.length) * (NODE_H + NODE_GAP) + META_H + (gaps.length ? 26 : 0)
-    return { area, x: 0, y: 0, w: SEC_W, h, nodes, actors: areaActors(model, area.id), systems: areaSystems(model, area.id), gaps, mapped, openQuestions: 0 }
+    const actors = areaActors(model, area.id).filter((a) => !/^actor \d+$/i.test(a))
+    const systems = areaSystems(model, area.id)
+    const meta = metaLines({ actors, systems })
+    const h = HEAD_H + PAD + Math.max(1, nodes.length) * (NODE_H + NODE_GAP) + (meta ? meta * 14 + 4 : 0) + (gaps.length ? Math.ceil(gaps.length / 2) * 20 + 4 : 0) + 4
+    return { area, x: 0, y: 0, w: SEC_W, h, nodes, actors, systems, gaps, mapped, openQuestions: 0, depth: depthOf(model, area) }
   })
   const main = sections.filter((s) => !s.area.side)
   const side = sections.filter((s) => s.area.side)
@@ -162,7 +209,7 @@ function layout(model: Model, findings: Finding[]): { sections: Section[]; main:
 
 /* ------------------------------------------------------------- component */
 
-export function LoopMap({ model, findings, selection, setSelection, onOpenArea, onMapArea, onAskAbout, onNavigate, commit, snapshot }: LoopMapProps) {
+export function LoopMap({ model, findings, selection, setSelection, onOpenArea, onMapArea, onAskAbout, onNavigate, commit, snapshot, onStartInterview }: LoopMapProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const { zoom, pan, setZoom, setPan, zoomAt, fitTo, toCanvas } = useViewport(viewportRef)
   const [drag, setDrag] = useState<{ startClient: { x: number; y: number }; startPan: { x: number; y: number } } | null>(null)
@@ -219,7 +266,7 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
 
   /* connectors */
   const links = useMemo(() => {
-    const out: { id: string; d: string; kind: "main" | "exception" | "return" | "cross"; label?: string; end: { x: number; y: number } }[] = []
+    const out: { id: string; d: string; kind: "main" | "exception" | "return" | "cross"; label?: string; end: { x: number; y: number }; linkId?: string; pair?: [string, string] }[] = []
     const byId = Object.fromEntries(sections.map((s) => [s.area.id, s]))
     const lastNode = (s: Section) => s.nodes[s.nodes.length - 1]
     const firstNode = (s: Section) => s.nodes[0]
@@ -237,7 +284,7 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
       const from = exitOf(a)
       const to = entryOf(s)
       const link = model.areaLinks.find((l) => l.from === a.area.id && l.to === s.area.id)
-      out.push({ id: `m${i}`, d: edgePath(from, to), kind: "main", label: link?.payload ?? link?.label, end: to })
+      out.push({ id: `m${i}`, d: edgePath(from, to), kind: "main", label: link?.payload ?? link?.label, end: to, linkId: link?.id, pair: [a.area.id, s.area.id] })
     })
     // Explicit cross-links that are not the consecutive chain
     model.areaLinks.forEach((l) => {
@@ -248,7 +295,15 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
       const bi = main.indexOf(b)
       if (ai >= 0 && bi === ai + 1) return
       if (a.area.side || b.area.side) return
-      out.push({ id: l.id, d: edgePath(exitOf(a), entryOf(b)), kind: "cross", label: l.label ?? l.payload, end: entryOf(b) })
+      if (ai >= 0 && bi >= 0 && bi < ai) {
+        // A loop back the user added: routed along the bottom so it never crosses the chain
+        const from = exitOf(a)
+        const to = entryOf(b)
+        const bottom = height - 30
+        out.push({ id: l.id, d: `M ${from.x} ${from.y} H ${from.x + 24} Q ${from.x + 40} ${from.y} ${from.x + 40} ${from.y + 16} V ${bottom - 16} Q ${from.x + 40} ${bottom} ${from.x + 24} ${bottom} H ${to.x - 24} Q ${to.x - 40} ${bottom} ${to.x - 40} ${bottom - 16} V ${to.y + 16} Q ${to.x - 40} ${to.y} ${to.x - 24} ${to.y} H ${to.x}`, kind: "return", label: l.label ?? l.payload, end: to, linkId: l.id })
+        return
+      }
+      out.push({ id: l.id, d: edgePath(exitOf(a), entryOf(b)), kind: "cross", label: l.label ?? l.payload, end: entryOf(b), linkId: l.id })
     })
     // Exceptions: from the nearest decision before the side stage into it, and back out to the next main stage
     sections.filter((s) => s.area.side).forEach((side) => {
@@ -266,19 +321,23 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
         out.push({ id: `x-out-${side.area.id}`, d: `M ${from.x} ${from.y} C ${from.x + 60} ${from.y}, ${to.x - 30} ${to.y + 60}, ${to.x} ${to.y}`, kind: "exception", end: to })
       }
     })
-    // Loop back from the last main stage to demand, routed along the bottom
-    if (main.length > 1) {
-      const last = main[main.length - 1]
-      const first = main[0]
-      const from = exitOf(last)
-      const bottom = height - 30
-      const to = entryOf(first)
-      out.push({ id: "return", d: `M ${from.x} ${from.y} H ${from.x + 24} Q ${from.x + 40} ${from.y} ${from.x + 40} ${from.y + 16} V ${bottom - 16} Q ${from.x + 40} ${bottom} ${from.x + 24} ${bottom} H ${to.x - 24} Q ${to.x - 40} ${bottom} ${to.x - 40} ${bottom - 16} V ${to.y + 16} Q ${to.x - 40} ${to.y} ${to.x - 24} ${to.y} H ${to.x}`, kind: "return", label: "repeat / referral", end: to })
-    }
     return out
   }, [sections, main, model.areaLinks, height])
 
   const selectedArea = selection?.kind === "area" ? selection.id : null
+  const selectedLink = selection?.kind === "areaLink" ? selection.id : null
+  const hasLoopBack = links.some((l) => l.kind === "return")
+  const mappedCount = sections.filter((s) => s.mapped).length
+
+  /** Select the handoff between two stages, creating the record the first time so "what moves" can be written down. */
+  const selectLink = (l: (typeof links)[number]) => {
+    if (l.linkId) return setSelection({ kind: "areaLink", id: l.linkId })
+    if (!l.pair) return
+    const id = newId("al")
+    const [from, to] = l.pair
+    commit((m) => ({ ...m, areaLinks: [...m.areaLinks, { id, from, to, verification: "unknown" }] }))
+    setSelection({ kind: "areaLink", id })
+  }
 
   return (
     <div
@@ -301,11 +360,24 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
           </defs>
           {links.map((l) => (
             <g key={l.id}>
+              {(l.linkId || l.pair) && (
+                <path
+                  d={l.d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={14}
+                  style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => selectLink(l)}
+                >
+                  <title>What moves between these stages</title>
+                </path>
+              )}
               <path
                 d={l.d}
                 fill="none"
-                stroke={l.kind === "exception" ? "#dc2626" : l.kind === "return" ? "#94a3b8" : "#64748b"}
-                strokeWidth={l.kind === "main" ? 2 : 1.5}
+                stroke={l.linkId && l.linkId === selectedLink ? "#2563eb" : l.kind === "exception" ? "#dc2626" : l.kind === "return" ? "#94a3b8" : "#64748b"}
+                strokeWidth={l.linkId && l.linkId === selectedLink ? 3 : l.kind === "main" ? 2 : 1.5}
                 strokeDasharray={l.kind === "main" ? undefined : l.kind === "return" ? "2 6" : "6 4"}
                 strokeOpacity={l.kind === "return" ? 0.9 : l.kind === "cross" ? 0.7 : 1}
                 markerEnd={l.kind === "exception" ? "url(#lm-arrow-red)" : "url(#lm-arrow)"}
@@ -315,11 +387,19 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
         </svg>
 
         {links.filter((l) => l.label).map((l) => {
-          const m = l.kind === "return" ? { x: width / 2, y: height - 30 } : midpoint(l.d)
+          const m = l.kind === "return" ? { x: (midpoint(l.d).x), y: height - 30 } : midpoint(l.d)
           return (
-            <span key={`lbl-${l.id}`} className={cn("absolute -translate-x-1/2 -translate-y-1/2 rounded-full border bg-card px-1.5 py-0.5 text-[10px] shadow-sm", l.kind === "exception" ? "border-red-300 text-red-700" : "border-border text-muted-foreground")} style={{ left: m.x, top: m.y }}>
+            <button
+              type="button"
+              key={`lbl-${l.id}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => selectLink(l)}
+              className={cn("absolute max-w-[160px] -translate-x-1/2 -translate-y-1/2 truncate rounded-full border bg-card px-1.5 py-0.5 text-[10px] shadow-sm", l.kind === "exception" ? "border-red-300 text-red-700" : "border-border text-muted-foreground hover:text-foreground")}
+              style={{ left: m.x, top: m.y }}
+              title={l.label}
+            >
               {l.label}
-            </span>
+            </button>
           )
         })}
 
@@ -341,11 +421,29 @@ export function LoopMap({ model, findings, selection, setSelection, onOpenArea, 
         ))}
       </div>
 
-      <div className="absolute bottom-3 left-3 z-30 rounded-lg border border-border bg-card/95 px-2 py-1 text-[11px] text-muted-foreground shadow-lg backdrop-blur">
-        <span className="mr-3 inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-slate-500" /> main flow</span>
-        <span className="mr-3 inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-red-500" /> exception</span>
-        <span className="mr-3 inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 border-t-2 border-dotted border-slate-400" /> repeat</span>
-        <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-6 rounded border border-dashed border-slate-400" /> typical, not yet mapped</span>
+      {sections.length > 0 && (
+        <div className="absolute left-3 top-3 z-30 rounded-lg border border-border bg-card/95 px-2.5 py-1 text-xs shadow-sm backdrop-blur">
+          <span className="font-semibold">Overview</span>
+          <span className="ml-2 text-muted-foreground">{mappedCount} of {sections.length} stages mapped</span>
+        </div>
+      )}
+
+      {sections.length === 0 && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center">
+          <div className="max-w-sm rounded-xl border border-dashed border-border bg-card/95 p-6 text-center shadow-sm" onPointerDown={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold">No stages yet</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Tell the AI what the business does and it lays out the stages in order, or add them yourself with + stage at the bottom.</p>
+            <Button size="sm" className="mt-3" onClick={onStartInterview}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Tell the AI about the business</Button>
+          </div>
+        </div>
+      )}
+
+      <div className="absolute bottom-3 left-3 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-card/95 px-2 py-1 text-[11px] text-muted-foreground shadow-lg backdrop-blur">
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-slate-500" /> flow</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-red-500" /> exception</span>
+        {hasLoopBack && <span className="inline-flex items-center gap-1"><span className="inline-block h-0.5 w-4 border-t-2 border-dotted border-slate-400" /> loops back</span>}
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-6 rounded border border-dashed border-slate-400" /> typical, not mapped</span>
+        <span className="inline-flex items-center gap-1"><DepthBars level={2} /> depth: steps · people · handoffs</span>
       </div>
 
       <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 rounded-lg border border-border bg-card/95 p-1 shadow-lg backdrop-blur">
@@ -394,7 +492,8 @@ function SectionFrame({ s, selected, onSelect, onDragStart, onOpen, onAsk, onNod
       >
         <span className="truncate text-[13px] font-semibold" title={s.area.purpose || s.area.name}>{s.area.name}</span>
         {s.area.side && <span className="text-[10px] text-muted-foreground">side path</span>}
-        <button type="button" onClick={(e) => { e.stopPropagation(); onOpen() }} className="ml-auto text-[10px] text-primary hover:underline">{s.mapped ? "Open" : "Map"}</button>
+        <span className="ml-auto" title={depthTitle(s.depth)}><DepthBars level={s.depth.level} /></span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onOpen() }} className="text-[10px] text-primary hover:underline">{s.mapped ? "Open" : "Map"}</button>
       </div>
 
       {s.nodes.map((n) => (
@@ -407,12 +506,12 @@ function SectionFrame({ s, selected, onSelect, onDragStart, onOpen, onAsk, onNod
       )}
 
       <div className="absolute left-3 right-3 space-y-0.5 text-[10px] leading-tight text-muted-foreground" style={{ top: HEAD_H + PAD + Math.max(1, s.nodes.length) * (NODE_H + NODE_GAP) }}>
-        <div className="flex items-start gap-1"><Users className="mt-px h-3 w-3 shrink-0" /><span className="truncate">{s.actors.length ? s.actors.slice(0, 3).join(", ") + (s.actors.length > 3 ? ` +${s.actors.length - 3}` : "") : "Who: not yet known"}</span></div>
-        <div className="flex items-start gap-1"><Server className="mt-px h-3 w-3 shrink-0" /><span className="truncate">{s.systems.length ? s.systems.slice(0, 3).join(", ") + (s.systems.length > 3 ? ` +${s.systems.length - 3}` : "") : "Systems: not yet known"}</span></div>
+        {s.actors.length > 0 && <div className="flex items-start gap-1"><Users className="mt-px h-3 w-3 shrink-0" /><span className="truncate">{s.actors.slice(0, 3).join(", ") + (s.actors.length > 3 ? ` +${s.actors.length - 3}` : "")}</span></div>}
+        {s.systems.length > 0 && <div className="flex items-start gap-1"><Server className="mt-px h-3 w-3 shrink-0" /><span className="truncate">{s.systems.slice(0, 3).join(", ") + (s.systems.length > 3 ? ` +${s.systems.length - 3}` : "")}</span></div>}
         {s.gaps.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
             {s.gaps.map((g) => (
-              <span key={g.key} className={cn("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-px", g.severity === "red" ? "border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300")}>
+              <span key={g.key} className={cn("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-px", g.severity === "red" ? "border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : g.severity === "orange" ? "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" : "border-border bg-muted/60 text-muted-foreground")}>
                 <g.icon className="h-2.5 w-2.5" /> {g.label}
               </span>
             ))}
@@ -439,4 +538,22 @@ function MapNodeBox({ n, left, top, sketch, onClick }: { n: MapNode; left: numbe
       <span className="line-clamp-2">{n.label}</span>
     </button>
   )
+}
+
+/** Three segments: steps written down, every step has a person, every handoff says how it moves. */
+function DepthBars({ level }: { level: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`Depth ${level} of 3`}>
+      {[1, 2, 3].map((i) => (
+        <span key={i} className={cn("inline-block h-2 w-1.5 rounded-sm", i <= level ? "bg-primary" : "bg-muted-foreground/25")} />
+      ))}
+    </span>
+  )
+}
+
+function depthTitle(d: Depth): string {
+  if (d.level === 0) return "Not mapped yet"
+  const parts = [`${d.steps} steps`, `${d.people} ${d.people === 1 ? "person" : "people"}`, `${d.systems} ${d.systems === 1 ? "system" : "systems"}`]
+  if (d.handoffs) parts.push(`${d.handoffsKnown} of ${d.handoffs} handoffs say how work moves`)
+  return parts.join(" · ")
 }

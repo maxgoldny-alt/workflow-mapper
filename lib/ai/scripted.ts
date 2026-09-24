@@ -201,12 +201,14 @@ export function createScriptedInterviewer(): Interviewer {
         }
 
         case "company": {
-          const m = text.match(/^(?:we(?:'re| are)\s+|this is\s+|it'?s\s+)?([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,3})/)
+          // The name is in the first clause: "Castle Wines. We sell wine" must not become "Castle Wines. We"
+          const firstClause = text.split(/[.,;:!?\n]/)[0] ?? text
+          const m = firstClause.match(/^(?:we(?:'re| are)\s+|this is\s+|it'?s\s+)?([A-Z][\w&'-]*(?:\s+[A-Z][\w&'-]*){0,3})/)
           const name = m?.[1]?.trim()
           const industry = /distribut/i.test(text) ? "distribution" : /manufactur|fabricat|factory/i.test(text) ? "manufacturing" : /property|tenant|rental|landlord/i.test(text) ? "property management" : /restaurant|food/i.test(text) ? "food service" : /clinic|dental|medical|patient/i.test(text) ? "healthcare" : /construction|contractor|builder/i.test(text) ? "construction" : /law|legal|attorney/i.test(text) ? "legal" : /account|bookkeep|tax/i.test(text) ? "accounting" : /software|saas|app/i.test(text) ? "software" : /retail|store|shop/i.test(text) ? "retail" : undefined
           if (name || industry) ops.push({ op: "setCompany", name, industry, description: clean(text).slice(0, 160) })
           s.stage = "name"
-          return { say: `Got it${name ? `, ${name}` : ""}. Which process should we map first? For ${industry ?? "a business like yours"}, "order intake" or "invoicing" are usual starting points.`, ops }
+          return { say: `Got it${name ? `, ${name}` : ""}. The overview now has the usual stages for ${industry ?? "a business like yours"}, in order. What's missing, or which stage do you want to talk through first?`, ops }
         }
         case "name": {
           const name = cap(clean(text)) || "Order intake"

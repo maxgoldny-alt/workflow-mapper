@@ -9,8 +9,8 @@ import { BUSINESS_TYPES, type BusinessType } from "@/lib/loops"
 interface WelcomeProps {
   companies: { id: string; name: string; active: boolean }[]
   onOpenCompany: (id: string) => void
-  /** Create a company with this loop, then optionally open the interviewer. */
-  onStart: (type: BusinessType, withAi: boolean) => void
+  /** Create a company from a template (or blank when null), then optionally open the interviewer. */
+  onStart: (type: BusinessType | null, withAi: boolean) => void
   onExploreSample: () => void
   onClose: () => void
 }
@@ -26,33 +26,42 @@ export function Welcome({ companies, onOpenCompany, onStart, onExploreSample, on
   if (picking) {
     return (
       <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/60 p-4 backdrop-blur-[2px]" onPointerDown={onClose}>
-        <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl" onPointerDown={(e) => e.stopPropagation()}>
+        <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onPointerDown={(e) => e.stopPropagation()}>
           <button type="button" onClick={() => setPicking(false)} className="absolute left-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Back">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <button type="button" onClick={onClose} className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Close">
             <X className="h-4 w-4" />
           </button>
-          <h2 className="text-center text-lg font-semibold">What type of business are we mapping?</h2>
-          <p className="mt-1 text-center text-sm text-muted-foreground">You get the typical stages for that kind of business as a starting point. Add, rename, or delete any of them; the AI adds a stage when you describe work that belongs to one.</p>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            {BUSINESS_TYPES.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => setType(b.id)}
-                className={cn("rounded-xl border-2 p-3 text-left transition-colors", type === b.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50")}
-              >
-                <div className="text-sm font-medium">{b.label}</div>
-                <div className="text-[11px] text-muted-foreground">{b.hint}</div>
-              </button>
-            ))}
+          <h2 className="text-center text-lg font-semibold">How do you want to start?</h2>
+
+          <button type="button" onClick={() => onStart(null, true)} className="mt-5 w-full rounded-xl border-2 border-primary bg-primary/5 p-4 text-left hover:bg-primary/10">
+            <div className="text-sm font-semibold">Tell the AI about the business</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">Name and what you do, in a sentence. It lays out your stages in order; you correct it. Two minutes.</div>
+          </button>
+
+          <div className="mt-4 rounded-xl border border-border p-4">
+            <div className="text-sm font-semibold">Start from an industry template</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">The typical stages for that kind of business. Rename, add, or delete any of them.</div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {BUSINESS_TYPES.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setType(b.id)}
+                  className={cn("rounded-lg border-2 p-2.5 text-left transition-colors", type === b.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50")}
+                >
+                  <div className="text-sm font-medium">{b.label}</div>
+                  <div className="text-[11px] text-muted-foreground">{b.hint}</div>
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" className="mt-3 w-full" onClick={() => onStart(type, false)}>Use this template</Button>
           </div>
-          <div className="mt-5 flex flex-col gap-2">
-            <Button onClick={() => onStart(type, true)}>Create it and start the interview</Button>
-            <Button variant="outline" onClick={() => onStart(type, false)}>Create it, I will fill it in myself</Button>
-            <p className="text-center text-[11px] text-muted-foreground">Both give the same map. The interview just starts asking right away; you can open it any time.</p>
-          </div>
+
+          <button type="button" onClick={() => onStart(null, false)} className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground">
+            Or start from a blank canvas
+          </button>
         </div>
       </div>
     )
@@ -67,12 +76,12 @@ export function Welcome({ companies, onOpenCompany, onStart, onExploreSample, on
 
         <h2 className="text-lg font-semibold">A clean map of how your business actually runs, end to end.</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Not how it should run. How it runs today, dysfunction included. Start with the whole loop on one screen, then open any stage and talk through it. The map builds itself; the AI asks what an operations analyst would ask.
+          Not how it should run. How it runs today, dysfunction included. Start with an overview of every stage in order, then open any stage and talk through it. The map builds itself; the AI asks what an operations analyst would ask.
         </p>
 
         <ol className="mt-5 space-y-3">
-          <Step icon={Rows3} color="#0891b2" title="The loop first">
-            Every stage of the business on one screen: where customers come from, how work comes in, gets done, gets paid, comes back. Stages you have not mapped yet show what is typical for your kind of business.
+          <Step icon={Rows3} color="#0891b2" title="The overview first">
+            Every stage of the business on one screen, in the order work flows: how work comes in, gets done, gets paid. It is the table of contents; the real map is inside each stage. Stages you have not mapped yet show what is typical for your kind of business.
           </Step>
           <Step icon={MessageSquareText} color="#4f46e5" title="Talk through each stage">
             Open a stage and describe it, or type the steps straight in. Who does it, in which system, how the next person knows it is ready. Steps, diagram, SOP, and data flow are the same facts, four ways.

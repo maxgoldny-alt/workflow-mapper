@@ -174,12 +174,13 @@ function focusContext(body: InterviewBody): string {
   } else if (body.level === "stage" && area) {
     lines.push(`The user is looking at stage "${area}"; put new steps in its workflow${proc ? ` ("${proc}")` : ` (process "${area}")`}. Ask about this stage until it has a start, steps, handoffs and an end.`)
   } else {
-    lines.push("The user is looking at the whole business loop.")
+    lines.push("The user is looking at the overview of the whole business.")
     if (proc) lines.push(`The process currently being mapped: "${proc}". Put new steps there unless the user clearly moves on.`)
   }
   const vocab = vocabulary(body)
   if (vocab.length) {
-    lines.push(`Typical stages for this kind of business: ${vocab.join(", ")}. The company may not have all of them. If the user describes work that belongs to one of these stages and it is not on the map, emit ensureArea with exactly that name. Never create an area with any other name.`)
+    if (parseAreas(body.modelSummary).length === 0) lines.push(`The overview has no stages yet. Seed it from what the user says (see Start). Typical stages for this kind of business, for reference: ${vocab.join(", ")}.`)
+    else lines.push(`Typical stages for this kind of business: ${vocab.join(", ")}. The company may not have all of them. If the user describes work that belongs to one of these stages and it is not on the map, emit ensureArea with exactly that name. Never create an area with any other name.`)
   }
   return lines.join("\n")
 }
@@ -274,6 +275,8 @@ function foldAreas(
   try {
     const m = JSON.parse(modelSummary) as { areas?: { area?: string; processes?: { process?: string }[] }[] }
     existing = (m.areas ?? []).map((a) => String(a.area ?? "")).filter(Boolean)
+    // An empty overview is being seeded: every stage the model proposes is kept, in order
+    if (existing.length === 0) return ops
     processes = (m.areas ?? []).flatMap((a) => (a.processes ?? []).map((p) => String(p.process ?? ""))).filter(Boolean)
   } catch {
     /* summary not JSON: no folding */

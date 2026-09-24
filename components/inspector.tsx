@@ -73,7 +73,7 @@ export function Inspector({ selection, model, processId, commit, onNavigate, onC
   const system = selection?.kind === "system" ? model.systems.find((s) => s.id === selection.id) : undefined
   const actor = selection?.kind === "actor" ? model.actors.find((a) => a.id === selection.id) : undefined
 
-  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : frame ? "Phase frame" : area ? "Loop stage" : link ? "Stage handoff" : proc ? "Workflow" : system ? "System" : actor ? "Actor" : "Inspector"
+  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : frame ? "Phase frame" : area ? "Stage" : link ? "Stage handoff" : proc ? "Workflow" : system ? "System" : actor ? "Actor" : "Inspector"
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-card">
@@ -368,6 +368,32 @@ function AreaFields({ model, area, commit, onNavigate, onClose }: { model: Model
           {LANE_COLORS.map((c) => (
             <button key={c} type="button" onClick={() => upd({ color: c })} className={cn("h-6 w-6 rounded-full border-2", area.color === c ? "border-foreground" : "border-transparent")} style={{ backgroundColor: c }} />
           ))}
+        </div>
+      </Field>
+      <Field label="Flows to" hint="Where work goes after this stage. The next stage in order is connected already; add others here, such as a loop back to the start.">
+        <div className="space-y-1">
+          {model.areaLinks.filter((l) => l.from === area.id).map((l) => (
+            <div key={l.id} className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+              <span className="truncate">{model.areas.find((a) => a.id === l.to)?.name ?? "?"}</span>
+              {(l.payload || l.label) && <span className="truncate text-muted-foreground">· {l.payload || l.label}</span>}
+              <button type="button" className="ml-auto text-muted-foreground hover:text-red-600" title="Remove this connection" onClick={() => commit((m) => ({ ...m, areaLinks: m.areaLinks.filter((x) => x.id !== l.id) }))}><X className="h-3 w-3" /></button>
+            </div>
+          ))}
+          <select
+            value=""
+            onChange={(e) => {
+              const to = e.target.value
+              if (!to) return
+              commit((m) => ({ ...m, areaLinks: [...m.areaLinks, { id: newId("al"), from: area.id, to, verification: "reported" }] }))
+            }}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="">+ Connect to another stage…</option>
+            {[...model.areas].sort((a, b) => a.order - b.order).filter((a) => a.id !== area.id && !model.areaLinks.some((l) => l.from === area.id && l.to === a.id)).map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
         </div>
       </Field>
       <Field label="Notes"><textarea value={area.notes || ""} onChange={(e) => upd({ notes: e.target.value || undefined })} className={textareaClass} /></Field>

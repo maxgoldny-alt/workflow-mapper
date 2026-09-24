@@ -30,7 +30,7 @@ import { createScriptedInterviewer } from "@/lib/ai/scripted"
 import type { Interviewer } from "@/lib/ai/provider"
 import { LoopView } from "./loop-view"
 import { LoopMap } from "./loop-map"
-import { allStageStarters, loopModel, type BusinessType } from "@/lib/loops"
+import { allStageStarters, businessTypeFor, loopAreas, loopModel, type BusinessType } from "@/lib/loops"
 import { StagePage, type StageTab } from "./stage-page"
 import { ProcessCanvas } from "./process-canvas"
 import { Inspector } from "./inspector"
@@ -188,7 +188,16 @@ export default function App() {
       if (turn) {
         if (turn.provider) setProviderName(turn.provider)
         const aiId = newId("m")
-        const { model: next, derived } = applyOps(baseModel, turn.ops, aiId)
+        const applied = applyOps(baseModel, turn.ops, aiId)
+        let next = applied.model
+        const derived = applied.derived
+        // The business is known but no stages came back: seed the overview from the closest industry template
+        if (next.areas.length === 0 && next.company.industry) {
+          const bt = businessTypeFor(next.company.industry)
+          const { areas, links } = loopAreas(bt.stages)
+          next = { ...next, areas, areaLinks: links }
+          derived.push(`+ Overview: ${areas.filter((a) => !a.side).map((a) => a.name).join(" → ")} (typical for ${bt.label.toLowerCase()})`)
+        }
         const aiMsg = {
           id: aiId,
           role: "ai" as const,
@@ -254,9 +263,9 @@ export default function App() {
     navigate({ level: "company" })
   }
 
-  /** New company from a business-type starter loop. */
-  const createLoopWorkspace = (type: BusinessType) => {
-    const ws = { id: newId("ws"), name: "New company", model: loopModel(type) }
+  /** New company: from an industry template, or blank (the AI or the user lays out the stages). */
+  const createLoopWorkspace = (type: BusinessType | null) => {
+    const ws = { id: newId("ws"), name: "New company", model: type ? loopModel(type) : blankModel("New company") }
     setWorkspaces((all) => [...all, ws])
     setActiveId(ws.id)
     history.reset()
@@ -354,7 +363,7 @@ export default function App() {
 
         <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Crumb active={nav.level === "company"} onClick={() => navigate({ level: "company" })}>{model.company.name}</Crumb>
-          {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Operating Map</span>}
+          {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Overview</span>}
           {nav.level === "area" && <span className="ml-1 text-[11px] text-muted-foreground">Stage</span>}
           {nav.level === "process" && <span className="ml-1 rounded bg-amber-500/15 px-1.5 text-[11px] text-amber-700 dark:text-amber-400">Editing by hand</span>}
           {currentArea && (
@@ -414,7 +423,7 @@ export default function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           {nav.level === "company" && companyView === "map" && (
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <LoopMap model={model} findings={findings} selection={selection} setSelection={setSelection} onOpenArea={openArea} onMapArea={mapArea} onAskAbout={askAbout} onNavigate={goTo} commit={commit} snapshot={snapshot} />
+              <LoopMap model={model} findings={findings} selection={selection} setSelection={setSelection} onOpenArea={openArea} onMapArea={mapArea} onAskAbout={askAbout} onNavigate={goTo} commit={commit} snapshot={snapshot} onStartInterview={() => setDrawerOpen(true)} />
               <MapStyle value={companyView} onChange={setCompanyView} />
             </div>
           )}
@@ -472,6 +481,7 @@ export default function App() {
 
         {drawerOpen && (
           <InterviewPanel
+            key={activeId}
             model={model}
             busy={busy}
             providerName={providerName}
@@ -482,7 +492,6 @@ export default function App() {
             onReset={resetInterview}
             onClose={() => setDrawerOpen(false)}
             onInstructions={(text) => commit((m) => ({ ...m, interview: { ...m.interview, instructions: text || undefined } }), false)}
-            onDepth={(d) => commit((m) => ({ ...m, interview: { ...m.interview, depth: d } }), false)}
           />
         )}
 
@@ -551,7 +560,7 @@ function MapStyle({ value, onChange }: { value: "map" | "cards"; onChange: (v: "
     <div className="absolute right-3 top-3 z-30 flex items-center rounded-md border border-border bg-card/95 p-0.5 text-xs shadow-sm backdrop-blur">
       {(["map", "cards"] as const).map((v) => (
         <button key={v} type="button" onClick={() => onChange(v)} className={cn("rounded px-2 py-0.5", value === v ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-          {v === "map" ? "Loop Map" : "Card Summary"}
+          {v === "map" ? "Overview" : "Cards"}
         </button>
       ))}
     </div>

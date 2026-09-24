@@ -5,7 +5,7 @@ import { Mic, MicOff, Send, Volume2, VolumeX, X, Loader2, Square, RotateCcw, Sli
 import { INTERVIEWER_RULES } from "@/lib/ai/provider"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { InterviewDepth, InterviewMessage, Model } from "@/lib/model"
+import type { InterviewMessage, Model } from "@/lib/model"
 import { createVoice } from "@/lib/voice"
 
 interface InterviewPanelProps {
@@ -21,7 +21,6 @@ interface InterviewPanelProps {
   onClose: () => void
   /** Save user-edited interviewer instructions (empty string restores the default). */
   onInstructions: (text: string) => void
-  onDepth: (d: InterviewDepth) => void
 }
 
 /**
@@ -29,8 +28,7 @@ interface InterviewPanelProps {
  * answers and optional read-aloud for questions. Everything voice goes through
  * `lib/voice`, so the provider can change without touching this file.
  */
-export function InterviewPanel({ model, busy, providerName, focusLabel, error, onSend, onStart, onReset, onClose, onInstructions, onDepth }: InterviewPanelProps) {
-  const depth: InterviewDepth = model.interview.depth ?? "map"
+export function InterviewPanel({ model, busy, providerName, focusLabel, error, onSend, onStart, onReset, onClose, onInstructions }: InterviewPanelProps) {
   const messages = model.interview.messages
   const [tuning, setTuning] = useState(false)
   const [rulesDraft, setRulesDraft] = useState(model.interview.instructions ?? INTERVIEWER_RULES)
@@ -176,13 +174,9 @@ export function InterviewPanel({ model, busy, providerName, focusLabel, error, o
       {!tuning && (
         <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-1 text-[11px] text-muted-foreground">
           {focusLabel && <span className="min-w-0 truncate">Talking about <span className="font-medium text-foreground">{focusLabel}</span></span>}
-          <div className="ml-auto flex shrink-0 items-center rounded-md border border-border bg-card p-0.5" title="Map: sketch the flow with few questions. Detail: pin down every handoff and system for an SOP.">
-            {(["map", "detail"] as const).map((d) => (
-              <button key={d} type="button" onClick={() => onDepth(d)} className={cn("rounded px-1.5 py-0.5", depth === d ? "bg-muted font-medium text-foreground" : "hover:text-foreground")}>
-                {d === "map" ? "Map the flow" : "Go deep"}
-              </button>
-            ))}
-          </div>
+          <span className="ml-auto shrink-0 rounded-md border border-border bg-card px-1.5 py-0.5 font-medium text-foreground" title="Map mode: captures what happens today, functional or not. It records; it does not challenge. SOP and automation passes come later.">
+            Map mode
+          </span>
         </div>
       )}
 
