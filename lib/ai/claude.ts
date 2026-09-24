@@ -31,7 +31,7 @@ export const claudeInterviewer: Interviewer = {
       if (res.status >= 500 || res.status === 404) throw new NoApiKeyError()
       throw new Error(body.error ?? `Interview request failed (${res.status})`)
     }
-    const data = (await res.json()) as { say: string; ops: Op[]; provider?: string }
-    return { say: data.say, ops: data.ops ?? [], provider: data.provider }
+    const data = (await res.json()) as { say: string; ops: Op[]; provider?: string; providerDetail?: string }
+    return { say: data.say, ops: data.ops ?? [], provider: data.provider, providerDetail: data.providerDetail }
   },
 }

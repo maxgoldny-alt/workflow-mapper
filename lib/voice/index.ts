@@ -16,6 +16,11 @@ export interface SpeechOutput {
   readonly supported: boolean
   speak(text: string, onEnd?: () => void): void
   cancel(): void
+  /** Available voices (name + language), best first. Empty until the browser has loaded them. */
+  voices(): { name: string; lang: string }[]
+  /** Choose a voice by name; persisted per browser. Pass null to go back to automatic. */
+  setVoice(name: string | null): void
+  currentVoice(): string | null
 }
 
 export interface VoiceProviders {
@@ -152,24 +157,66 @@ class WebSpeechInput implements SpeechInput {
   }
 }
 
+const VOICE_KEY = "workflow-mapper-voice"
+
 class WebSpeechOutput implements SpeechOutput {
   readonly supported = typeof window !== "undefined" && "speechSynthesis" in window
   private voice: SpeechSynthesisVoice | null = null
+  private chosen: string | null = null
 
-  /** Prefer a natural-sounding voice in the user's language when the browser ships one. */
-  private pickVoice(): SpeechSynthesisVoice | null {
-    if (this.voice) return this.voice
+  constructor() {
+    if (this.supported) {
+      try {
+        this.chosen = localStorage.getItem(VOICE_KEY)
+      } catch {
+        /* storage unavailable */
+      }
+      // Voices load asynchronously in Chrome; ask early so the list is ready
+      window.speechSynthesis.getVoices()
+      window.speechSynthesis.onvoiceschanged = () => {
+        this.voice = null
+      }
+    }
+  }
+
+  private ranked(): SpeechSynthesisVoice[] {
     const voices = window.speechSynthesis.getVoices()
-    if (!voices.length) return null
     const lang = (navigator.language || "en-US").toLowerCase()
-    const inLang = voices.filter((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)))
-    const pool = inLang.length ? inLang : voices
     const score = (v: SpeechSynthesisVoice) =>
-      (/natural|neural|premium|enhanced/i.test(v.name) ? 8 : 0) +
+      (/natural|neural|premium|enhanced|online/i.test(v.name) ? 8 : 0) +
       (/google|microsoft/i.test(v.name) ? 3 : 0) +
+      (v.lang.toLowerCase().startsWith(lang.slice(0, 2)) ? 4 : 0) +
       (v.lang.toLowerCase() === lang ? 2 : 0) +
       (v.localService ? 0 : 1)
-    this.voice = [...pool].sort((a, b) => score(b) - score(a))[0] ?? null
+    return [...voices].sort((a, b) => score(b) - score(a))
+  }
+
+  voices() {
+    if (!this.supported) return []
+    return this.ranked().map((v) => ({ name: v.name, lang: v.lang }))
+  }
+
+  setVoice(name: string | null) {
+    this.chosen = name
+    this.voice = null
+    try {
+      if (name) localStorage.setItem(VOICE_KEY, name)
+      else localStorage.removeItem(VOICE_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  currentVoice() {
+    return this.chosen
+  }
+
+  /** The chosen voice, else the best-ranked one the browser ships. */
+  private pickVoice(): SpeechSynthesisVoice | null {
+    if (this.voice) return this.voice
+    const ranked = this.ranked()
+    if (!ranked.length) return null
+    this.voice = (this.chosen && ranked.find((v) => v.name === this.chosen)) || ranked[0]
     return this.voice
   }
 

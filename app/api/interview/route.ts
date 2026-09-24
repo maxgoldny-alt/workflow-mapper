@@ -206,7 +206,7 @@ Output rules for ops:
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
     const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
-    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44" })
+    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · model not disclosed by Base44` })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
     const call = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
     if (!call) return NextResponse.json({ error: "no_tool_call" }, { status: 502 })
     const input = call.input as { say: string; ops: unknown[] }
-    return NextResponse.json({ say: input.say, ops: Array.isArray(input.ops) ? input.ops : [], provider: "Claude" })
+    return NextResponse.json({ say: input.say, ops: Array.isArray(input.ops) ? input.ops : [], provider: "Claude", providerDetail: `Anthropic · ${model}` })
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) return NextResponse.json({ error: "bad_api_key" }, { status: 503 })
     if (err instanceof Anthropic.RateLimitError) return NextResponse.json({ error: "rate_limited" }, { status: 429 })

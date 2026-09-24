@@ -31,6 +31,8 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
   const [speak, setSpeak] = useState(true)
   const [autoSend, setAutoSend] = useState(true)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceNames, setVoiceNames] = useState<{ name: string; lang: string }[]>([])
+  const [chosenVoice, setChosenVoice] = useState<string | null>(null)
   const voice = useMemo(() => createVoice(), [])
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -61,6 +63,20 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
     voice.input.stop()
     voice.output.cancel()
   }, [voice])
+
+  // Voice list loads asynchronously in Chrome; poll briefly until it appears
+  useEffect(() => {
+    if (!voiceMode || !voice.output.supported) return
+    let tries = 0
+    const tick = () => {
+      const list = voice.output.voices()
+      if (list.length || tries++ > 20) {
+        setVoiceNames(list)
+        setChosenVoice(voice.output.currentVoice())
+      } else setTimeout(tick, 150)
+    }
+    tick()
+  }, [voiceMode, voice])
 
   const submit = (text: string) => {
     const t = text.trim()
@@ -188,6 +204,26 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
               <label className="ml-1 flex items-center gap-1 text-[11px] text-muted-foreground">
                 <input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> auto-send
               </label>
+              {voiceNames.length > 0 && (
+                <select
+                  value={chosenVoice ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value || null
+                    voice.output.setVoice(v)
+                    setChosenVoice(v)
+                    voice.output.speak("This is how I sound.")
+                  }}
+                  title="Read-aloud voice. Edge ships natural voices; Chrome on Windows mostly does not."
+                  className="ml-1 max-w-[150px] truncate rounded-md border border-border bg-background px-1 py-1 text-[11px]"
+                >
+                  <option value="">Auto ({voiceNames[0]?.name})</option>
+                  {voiceNames.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+              )}
             </>
           )}
           {listening && (
@@ -226,6 +262,11 @@ function Bubble({ m }: { m: InterviewMessage }) {
   return (
     <div className={cn("flex flex-col", ai ? "items-start" : "items-end")}>
       <div className={cn("max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-snug", ai ? "rounded-tl-sm bg-muted text-foreground" : "rounded-tr-sm bg-primary text-primary-foreground")}>{m.text}</div>
+      {m.trace && (
+        <p className="mt-0.5 pl-1 text-[10px] text-muted-foreground/70" title={m.trace.detail ?? m.trace.provider}>
+          {m.trace.provider} · {(m.trace.ms / 1000).toFixed(1)}s · {m.trace.ops} ops{m.trace.detail ? ` · ${m.trace.detail}` : ""}
+        </p>
+      )}
       {m.derived && m.derived.length > 0 && (
         <ul className="mt-1 max-w-[92%] space-y-0.5 pl-1 text-[11px] text-muted-foreground">
           {m.derived.map((d, i) => (

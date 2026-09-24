@@ -292,6 +292,8 @@ export interface InterviewMessage {
   at: number
   /** Human-readable summary of what this turn created or changed. */
   derived?: string[]
+  /** Which provider produced this turn and how long it took: the "other side". */
+  trace?: { provider: string; detail?: string; ms: number; ops: number }
 }
 
 export interface Model {

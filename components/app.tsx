@@ -131,6 +131,7 @@ export default function App() {
       const ctx = { model: baseModel, messages: baseModel.interview.messages, focusProcessId: nav.level === "process" ? nav.processId : baseModel.interview.focusProcessId }
 
       let turn
+      const t0 = Date.now()
       try {
         turn = await interviewerRef.current.next(ctx, userText)
       } catch (err) {
@@ -148,7 +149,14 @@ export default function App() {
         if (turn.provider) setProviderName(turn.provider)
         const aiId = newId("m")
         const { model: next, derived } = applyOps(baseModel, turn.ops, aiId)
-        const aiMsg = { id: aiId, role: "ai" as const, text: turn.say, at: Date.now(), derived: derived.length ? derived : undefined }
+        const aiMsg = {
+          id: aiId,
+          role: "ai" as const,
+          text: turn.say,
+          at: Date.now(),
+          derived: derived.length ? derived : undefined,
+          trace: { provider: turn.provider ?? interviewerRef.current.name, detail: turn.providerDetail, ms: Date.now() - t0, ops: turn.ops.length },
+        }
         // Focus the process most recently touched so drill-down follows the conversation
         const focus = next.processes.find((p) => p.doc.nodes.some((n) => n.messageId === aiId))?.id ?? ctx.focusProcessId
         commit(() => ({ ...next, interview: { messages: [...next.interview.messages, aiMsg], focusProcessId: focus } }), false)

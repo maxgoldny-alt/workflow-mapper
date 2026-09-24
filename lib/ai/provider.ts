@@ -14,6 +14,8 @@ export interface InterviewTurn {
   ops: Op[]
   /** Which provider served the turn ("Base44" or "Claude"); absent for scripted. */
   provider?: string
+  /** Extra provenance: which app/model served it, when the provider reports it. */
+  providerDetail?: string
 }
 
 /**
