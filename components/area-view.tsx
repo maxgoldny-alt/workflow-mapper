@@ -90,13 +90,13 @@ export function AreaView({ model, area, selection, setSelection, commit, onOpenP
             className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-foreground"
           >
             <Plus className="mb-1 h-5 w-5" />
-            Add process
+            Add workflow
           </button>
         </div>
 
         {procs.length === 0 && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            No processes yet. Add one, or ask the AI interviewer about what happens in {area.name}.
+            No workflows yet. Add one, or ask the AI interviewer about what happens in {area.name}.
           </p>
         )}
       </div>

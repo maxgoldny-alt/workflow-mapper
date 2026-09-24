@@ -73,7 +73,7 @@ export function Inspector({ selection, model, processId, commit, onNavigate, onC
   const system = selection?.kind === "system" ? model.systems.find((s) => s.id === selection.id) : undefined
   const actor = selection?.kind === "actor" ? model.actors.find((a) => a.id === selection.id) : undefined
 
-  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : frame ? "Phase frame" : area ? "Process area" : link ? "Area handoff" : proc ? "Process" : system ? "System" : actor ? "Actor" : "Inspector"
+  const title = node ? NODE_TYPE_META[node.type].label : many ? `${many.length} nodes` : edge ? (doc && isHandoff(doc, edge) ? "Handoff" : "Connection") : lane ? "Actor lane" : frame ? "Phase frame" : area ? "Loop stage" : link ? "Stage handoff" : proc ? "Workflow" : system ? "System" : actor ? "Actor" : "Inspector"
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-card">
@@ -372,7 +372,7 @@ function AreaFields({ model, area, commit, onNavigate, onClose }: { model: Model
           ))}
         </div>
       </Field>
-      <Field label="Processes">
+      <Field label="Workflows">
         <div className="space-y-1">
           {procs.map((p) => (
             <button key={p.id} type="button" onClick={() => onNavigate({ level: "process", processId: p.id })} className="flex w-full items-center gap-2 rounded-md border border-border px-2 py-1 text-left text-xs hover:bg-muted">
@@ -386,7 +386,7 @@ function AreaFields({ model, area, commit, onNavigate, onClose }: { model: Model
             commit((m) => ({ ...m, processes: [...m.processes, { id, areaId: area.id, name: `${area.name} process`, doc: blankDoc() }] }))
             onNavigate({ level: "process", processId: id })
           }}>
-            <Plus className="mr-1.5 h-3 w-3" /> Add process
+            <Plus className="mr-1.5 h-3 w-3" /> Add workflow
           </Button>
         </div>
       </Field>

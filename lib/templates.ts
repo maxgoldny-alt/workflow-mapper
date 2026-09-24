@@ -8,6 +8,7 @@ import {
   type Model,
   type Workspace,
 } from "./model"
+import { BUSINESS_TYPES, loopAreas, loopModel } from "./loops"
 
 export interface Template {
   id: string
@@ -184,13 +185,87 @@ function operationalCore(): Model {
   return m
 }
 
+/* ------------------------------------------------ Service business */
+
+// Lane tops: 0, 170, 340
+const inquiryToQuote: Doc = {
+  lanes: [
+    { id: "customer", actor: "Customer", actorId: "act_customer", height: 170, color: LANE_COLORS[0] },
+    { id: "office", actor: "Dana (office)", actorId: "act_dana", height: 170, color: LANE_COLORS[1] },
+    { id: "owner", actor: "Mike (owner)", actorId: "act_mike", height: 170, color: LANE_COLORS[2] },
+  ],
+  nodes: [
+    { id: "call", label: "Calls the office", type: "trigger", x: 180, y: 41, lane: "customer" },
+    { id: "webform", label: "Submits website form", type: "trigger", x: 180, y: 41, lane: "customer" },
+    { id: "log", label: "Logs inquiry in Jobber", type: "step", x: 420, y: 211, lane: "office", systemId: "sys_jobber", dataOut: ["do_inquiry"] },
+    { id: "details", label: "Enough detail to quote?", type: "decision", x: 608, y: 211, lane: "office" },
+    { id: "callback", label: "Calls customer for details", type: "step", x: 796, y: 211, lane: "office" },
+    { id: "visit", label: "Site visit", type: "step", x: 984, y: 381, lane: "owner" },
+    { id: "quote", label: "Writes quote in Jobber", type: "step", x: 1172, y: 381, lane: "owner", systemId: "sys_jobber", dataOut: ["do_quote"] },
+    { id: "send", label: "Emails quote", type: "step", x: 1360, y: 211, lane: "office", dataIn: ["do_quote"] },
+  ],
+  connections: [
+    e("i1", "call", "log", { channel: "phone", execution: "human", integration: "none", triggerKind: "human-check", trigger: "Dana answers the phone", payload: "Job details, verbally" }),
+    e("i2", "webform", "log", { channel: "web-form", execution: "human", integration: "none", triggerKind: "event", trigger: "Form emails Dana", payload: "Form fields", dataObjectIds: ["do_inquiry"] }),
+    e("i3", "log", "details", { channel: "system", execution: "human", integration: "none" }),
+    e("i4", "details", "callback", { type: "no", channel: "phone", execution: "human", integration: "none" }),
+    e("i5", "details", "visit", { type: "yes", channel: "chat", execution: "human", integration: "none", triggerKind: "human-check", trigger: "Dana texts Mike the address", payload: "Address + job notes" }),
+    e("i6", "callback", "details", { channel: "system", execution: "human", integration: "none" }),
+    e("i7", "visit", "quote", { channel: "system", execution: "human", integration: "none" }),
+    e("i8", "quote", "send", { channel: "system", execution: "human", integration: "none", triggerKind: "human-check", trigger: "Dana sees the quote appear in Jobber", payload: "Quote PDF", dataObjectIds: ["do_quote"] }),
+  ],
+}
+
+function serviceBusiness(): Model {
+  const m = loopModel("service", "Northside Plumbing")
+  m.company.description = "Residential plumbing and drain repair, two vans, five people"
+  const stage = (name: string) => m.areas.find((a) => a.name === name)!
+  stage("Lead Source").purpose = "Google, referrals, yard signs"
+  stage("Inquiry").purpose = "Calls and website form"
+  stage("Estimate / Quote").purpose = "Site visit, quote in Jobber"
+  stage("Approval").purpose = "Customer accepts by email or phone"
+  stage("Scheduling").purpose = "Dana books the van in Jobber"
+  stage("Work Performed").purpose = "Tech does the job, photos in Jobber"
+  stage("Invoice / Payment").purpose = "Invoice from Jobber, card or check"
+  stage("Review / Repeat").purpose = "Google review request, reminders"
+  m.processes = [{ id: "proc_inquiry", areaId: stage("Inquiry").id, name: "Inquiry to quote", purpose: "From the first call or form to a quote in the customer's inbox", doc: inquiryToQuote }]
+  m.actors = [
+    { id: "act_customer", name: "Customer", kind: "customer" },
+    { id: "act_dana", name: "Dana (office)", kind: "person", notes: "Answers phones, runs Jobber and QuickBooks" },
+    { id: "act_mike", name: "Mike (owner)", kind: "person", notes: "Does site visits and writes quotes" },
+  ]
+  m.platforms = [
+    { id: "plat_jobber", name: "Jobber", vendor: "Jobber", category: "Field service" },
+    { id: "plat_qbo", name: "QuickBooks Online", vendor: "Intuit", category: "Accounting" },
+  ]
+  m.systems = [
+    { id: "sys_jobber", name: "Jobber", platformId: "plat_jobber", kind: "app", accountType: "company", ownerActorId: "act_dana", purpose: "Inquiries, quotes, scheduling, invoices", integration: "unknown", verification: "reported" },
+    { id: "sys_qbo", name: "QuickBooks", platformId: "plat_qbo", kind: "app", accountType: "company", ownerActorId: "act_dana", purpose: "Books", integration: "unknown", verification: "reported" },
+    { id: "sys_website", name: "Website contact form", kind: "website", purpose: "Sends inquiries by email", integration: "none", verification: "reported" },
+  ]
+  m.dataObjects = [
+    { id: "do_inquiry", name: "Inquiry", kind: "record" },
+    { id: "do_quote", name: "Quote", kind: "document", format: "PDF" },
+  ]
+  const now = Date.now()
+  m.questions = [
+    { id: "q1", text: "Does Jobber sync invoices to QuickBooks, or does Dana re-enter them?", ref: { areaId: stage("Invoice / Payment").id }, status: "open", source: "ai", createdAt: now },
+    { id: "q2", text: "How does Mike know a site visit is booked: does Dana text him, or does he check Jobber?", ref: { processId: "proc_inquiry", nodeId: "visit" }, status: "open", source: "ai", createdAt: now },
+    { id: "q3", text: "What happens when a customer never answers the quote email?", ref: { areaId: stage("Approval").id }, status: "open", source: "ai", createdAt: now },
+  ]
+  return m
+}
+
 /* ---------------------------------------------------------- registry */
 
 export const templates: Template[] = [
+  { id: "service-sample", name: "Northside Plumbing (sample)", description: "Service business loop with one mapped workflow", build: serviceBusiness },
   { id: "order-to-cash", name: "Order to Cash (sample)", description: "Three areas: intake, fulfilment, billing", build: orderToCash },
   { id: "operational-core", name: "Operational Core", description: "One area, one detailed process", build: operationalCore },
+  ...BUSINESS_TYPES.map((b) => ({ id: `loop-${b.id}`, name: `${b.label} loop`, description: b.hint, build: () => loopModel(b.id) })),
   { id: "empty", name: "Empty company", description: "Start from nothing", build: () => blankModel("My company") },
 ]
+void loopAreas
 export const defaultTemplate = templates[0]
 export const getTemplateById = (id: string) => templates.find((t) => t.id === id)
 

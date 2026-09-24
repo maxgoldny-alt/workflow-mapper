@@ -45,8 +45,8 @@ export function BottomTray({ model, findings, processId, selectedEdgeId, onSelec
 
   const tabs: { id: Tab; label: string; count: number; accent?: string }[] = [
     { id: "handoffs", label: "Handoffs", count: rows.length, accent: manual ? `${manual} manual` : undefined },
-    { id: "findings", label: "Findings", count: fs.length },
-    { id: "questions", label: "Questions", count: qs.length },
+    { id: "findings", label: "Issues", count: fs.length },
+    { id: "questions", label: "Open Questions", count: qs.length },
   ]
 
   return (
@@ -137,7 +137,7 @@ export function BottomTray({ model, findings, processId, selectedEdgeId, onSelec
 
           {tab === "findings" && (
             fs.length === 0 ? (
-              <Empty>No findings. Findings come from the structure of the map and recorded facts, not from guesses.</Empty>
+              <Empty>No issues. Issues come from the structure of the map and recorded facts, not from guesses.</Empty>
             ) : (
               <ul className="divide-y divide-border/60">
                 {fs.map((f) => (

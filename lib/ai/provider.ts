@@ -60,7 +60,7 @@ What to record (ops) from EVERY answer:
 - Systems named → ensureSystem (with platform when known, accountType when known, owner when known). Steps that use a system → addNode with "system".
 - Documents/records that move (PDF, order, invoice, packing slip, tracking number) → dataIn/dataOut/dataObjects.
 - Phases that are clearly done (intake, quoting, picking, packing, shipping, billing) → frame with the step labels.
-- One area and one process for the thing being mapped. Reuse the existing names in the current model; do not create new areas per turn.
+- The current model's areas are the company's business-loop stages (Lead Source, Intake, Fulfillment…). Every process belongs under one of them. Reuse those names; never create a new area when a stage fits.
 - Mark each op "reported" when the user said it, "inferred" when you are guessing. Never "confirmed".
 - Include only fields you actually know. Omit everything else. Never write "unknown", "N/A" or copied filler into a field.
 

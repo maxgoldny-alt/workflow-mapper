@@ -28,6 +28,8 @@ import { claudeInterviewer, NoApiKeyError } from "@/lib/ai/claude"
 import { createScriptedInterviewer } from "@/lib/ai/scripted"
 import type { Interviewer } from "@/lib/ai/provider"
 import { OverviewCanvas } from "./overview-canvas"
+import { LoopView } from "./loop-view"
+import { loopModel, type BusinessType } from "@/lib/loops"
 import { AreaView } from "./area-view"
 import { ProcessCanvas } from "./process-canvas"
 import { Inspector } from "./inspector"
@@ -49,6 +51,7 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null)
   const [view, setView] = useState<View>("operational")
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [companyView, setCompanyView] = useState<"loop" | "canvas">("loop")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { resolvedTheme, setTheme } = useTheme()
@@ -188,8 +191,43 @@ export default function App() {
     navigate({ level: "company" })
   }
 
+  /** New company from a business-type starter loop. */
+  const createLoopWorkspace = (type: BusinessType) => {
+    const ws = { id: newId("ws"), name: "New company", model: loopModel(type) }
+    setWorkspaces((all) => [...all, ws])
+    setActiveId(ws.id)
+    history.reset()
+    navigate({ level: "company" })
+  }
+
+  /** Give a stage its first workflow and open it. */
+  const mapArea = (areaId: string) => {
+    const area = model.areas.find((a) => a.id === areaId)
+    const existing = model.processes.find((p) => p.areaId === areaId)
+    if (existing) return navigate({ level: "process", processId: existing.id })
+    const id = newId("proc")
+    commit((m) => ({ ...m, processes: [...m.processes, { id, areaId, name: area?.name ?? "Workflow", doc: blankDoc() }] }))
+    navigate({ level: "process", processId: id })
+  }
+
+  /** Point the interviewer at one stage. */
+  const askAbout = (areaId: string) => {
+    const area = model.areas.find((a) => a.id === areaId)
+    if (!area) return
+    const existing = model.processes.find((p) => p.areaId === areaId)
+    let pid = existing?.id
+    if (!pid) {
+      pid = newId("proc")
+      const id = pid
+      commit((m) => ({ ...m, processes: [...m.processes, { id, areaId, name: area.name, doc: blankDoc() }] }))
+    }
+    commit((m) => ({ ...m, interview: { ...m.interview, focusProcessId: pid } }), false)
+    navigate({ level: "process", processId: pid })
+    setDrawerOpen(true)
+  }
+
   const switchWorkspace = (id: string) => {
-    if (id === "__new__") return createWorkspace()
+    if (id === "__new__") return setShowWelcome(true)
     if (id.startsWith("__tpl__")) return createWorkspace(id.slice(7))
     setActiveId(id)
     history.reset()
@@ -258,6 +296,7 @@ export default function App() {
 
         <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Crumb active={nav.level === "company"} onClick={() => navigate({ level: "company" })}>{model.company.name}</Crumb>
+          {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Business Loop</span>}
           {currentArea && (
             <>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -303,8 +342,25 @@ export default function App() {
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          {nav.level === "company" && (
-            <OverviewCanvas model={model} findings={findings} selection={selection} setSelection={setSelection} commit={commit} snapshot={snapshot} onOpenArea={openArea} onStartInterview={() => setDrawerOpen(true)} />
+          {nav.level === "company" && companyView === "loop" && (
+            <LoopView
+              model={model}
+              findings={findings}
+              selection={selection}
+              setSelection={setSelection}
+              commit={commit}
+              onOpenArea={openArea}
+              onMapArea={mapArea}
+              onAskAbout={askAbout}
+              onStartInterview={() => setDrawerOpen(true)}
+              onShowCanvas={() => setCompanyView("canvas")}
+            />
+          )}
+          {nav.level === "company" && companyView === "canvas" && (
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <OverviewCanvas model={model} findings={findings} selection={selection} setSelection={setSelection} commit={commit} snapshot={snapshot} onOpenArea={openArea} onStartInterview={() => setDrawerOpen(true)} />
+              <Button variant="secondary" size="sm" className="absolute right-3 top-3 z-30" onClick={() => setCompanyView("loop")}>Back to loop</Button>
+            </div>
           )}
           {nav.level === "area" && currentArea && (
             <AreaView model={model} area={currentArea} selection={selection} setSelection={setSelection} commit={commit} onOpenProcess={(id) => navigate({ level: "process", processId: id })} />
@@ -346,10 +402,10 @@ export default function App() {
         {showWelcome && (
           <Welcome
             onClose={() => setShowWelcome(false)}
-            onStartInterview={() => {
+            onStart={(type, withAi) => {
               setShowWelcome(false)
-              if (model.processes.length) createWorkspace()
-              setDrawerOpen(true)
+              createLoopWorkspace(type)
+              if (withAi) setDrawerOpen(true)
             }}
             onExploreSample={() => {
               setShowWelcome(false)
@@ -361,14 +417,14 @@ export default function App() {
       </div>
 
       <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border bg-card px-3 text-[11px] text-muted-foreground">
-        <span>{model.areas.length} areas</span>
-        <span>{model.processes.length} processes</span>
+        <span>{model.areas.length} stages</span>
+        <span>{model.processes.length} workflows</span>
         <span>{model.actors.length} actors</span>
         <span>{model.systems.length} systems</span>
         <span>{model.questions.filter((q) => q.status === "open").length} open questions</span>
         {nav.level === "company" && (
           <button type="button" onClick={() => { const id = newId("area"); commit((m) => ({ ...m, areas: [...m.areas, { id, name: `Area ${m.areas.length + 1}`, order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length] }] })); setSelection({ kind: "area", id }) }} className="flex items-center gap-0.5 hover:text-foreground">
-            <Plus className="h-3 w-3" /> area
+            <Plus className="h-3 w-3" /> stage
           </button>
         )}
         {nav.level === "area" && currentArea && (
