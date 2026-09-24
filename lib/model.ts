@@ -306,6 +306,9 @@ export interface InterviewMessage {
   trace?: { provider: string; detail?: string; ms: number; ops: number }
 }
 
+/** How deep the interviewer digs: sketch the flow, or pin down every handoff for an SOP. */
+export type InterviewDepth = "map" | "detail"
+
 export interface Model {
   version: 5
   company: { name: string; industry?: string; description?: string }
@@ -317,7 +320,7 @@ export interface Model {
   systems: SystemInstance[]
   dataObjects: DataObject[]
   questions: Question[]
-  interview: { messages: InterviewMessage[]; focusProcessId?: string; instructions?: string }
+  interview: { messages: InterviewMessage[]; focusProcessId?: string; instructions?: string; depth?: InterviewDepth }
 }
 
 export interface Workspace {

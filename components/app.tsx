@@ -3,7 +3,7 @@
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useTheme } from "next-themes"
-import { ChevronRight, HelpCircle, Moon, Sun, Undo2, Redo2, Upload, Sparkles, Mic, Plus, PencilRuler, Check } from "lucide-react"
+import { ChevronRight, HelpCircle, Moon, Sun, Undo2, Redo2, Upload, Sparkles, Mic, Plus, PencilRuler, Check, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
@@ -30,7 +30,7 @@ import { createScriptedInterviewer } from "@/lib/ai/scripted"
 import type { Interviewer } from "@/lib/ai/provider"
 import { LoopView } from "./loop-view"
 import { LoopMap } from "./loop-map"
-import { loopModel, type BusinessType } from "@/lib/loops"
+import { allStageStarters, loopModel, type BusinessType } from "@/lib/loops"
 import { StagePage, type StageTab } from "./stage-page"
 import { ProcessCanvas } from "./process-canvas"
 import { Inspector } from "./inspector"
@@ -147,6 +147,9 @@ export default function App() {
   const interviewerRef = useRef<Interviewer>(claudeInterviewer)
   const [providerName, setProviderName] = useState(claudeInterviewer.name)
 
+  /** The focus the drawer last asked about; set by the re-ask effect and by turns that move the user themselves. */
+  const askedFor = useRef<string | null>(null)
+
   const runTurn = useCallback(
     async (userText: string | null) => {
       setBusy(true)
@@ -164,6 +167,7 @@ export default function App() {
         focusNodeId,
         focusProcessId: nav.level === "process" ? nav.processId : (baseModel.interview.focusProcessId && baseModel.processes.find((p) => p.id === baseModel.interview.focusProcessId)?.areaId === focusAreaId ? baseModel.interview.focusProcessId : undefined),
         instructions: baseModel.interview.instructions,
+        depth: baseModel.interview.depth ?? ("map" as const),
       }
 
       let turn
@@ -195,10 +199,16 @@ export default function App() {
         }
         // Focus the process most recently touched so drill-down follows the conversation
         const focus = next.processes.find((p) => p.doc.nodes.some((n) => n.messageId === aiId))?.id ?? ctx.focusProcessId
-        commit(() => ({ ...next, interview: { messages: [...next.interview.messages, aiMsg], focusProcessId: focus } }), false)
-        if (focus && nav.level !== "process") {
+        commit(() => ({ ...next, interview: { ...next.interview, messages: [...next.interview.messages, aiMsg], focusProcessId: focus } }), false)
+        // From the map, the conversation lands in a stage: follow it there so the steps appear as they are said
+        if (focus && nav.level === "company") {
           const proc = next.processes.find((p) => p.id === focus)
-          if (proc && next.processes.length === 1 && next.areas.length === 1) setNav({ level: "process", processId: focus })
+          if (proc && proc.doc.nodes.some((n) => n.messageId === aiId)) {
+            setStageTab("steps")
+            setStageProcessId(proc.id)
+            askedFor.current = `area:${proc.areaId}`
+            setNav({ level: "area", areaId: proc.areaId })
+          }
         }
       }
       setBusy(false)
@@ -207,7 +217,6 @@ export default function App() {
   )
 
   // Moving to another stage while the drawer is open: ask a fresh, contextual question there
-  const askedFor = useRef<string | null>(null)
   const focusKey = nav.level === "company" ? "company" : nav.level === "area" ? `area:${nav.areaId}` : `area:${currentProcess?.areaId ?? ""}`
   useEffect(() => {
     if (!drawerOpen) {
@@ -333,6 +342,7 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowWelcome(true)} title="Home: your companies, start a new one"><Home className="h-4 w-4" /></Button>
         <Select value={activeId} onValueChange={switchWorkspace}>
           <SelectTrigger className="h-8 w-[180px] text-sm font-medium"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -472,11 +482,14 @@ export default function App() {
             onReset={resetInterview}
             onClose={() => setDrawerOpen(false)}
             onInstructions={(text) => commit((m) => ({ ...m, interview: { ...m.interview, instructions: text || undefined } }), false)}
+            onDepth={(d) => commit((m) => ({ ...m, interview: { ...m.interview, depth: d } }), false)}
           />
         )}
 
         {showWelcome && (
           <Welcome
+            companies={workspaces.filter((w) => w.id !== "ws_boot").map((w) => ({ id: w.id, name: w.name, active: w.id === activeId }))}
+            onOpenCompany={(id) => { setShowWelcome(false); switchWorkspace(id) }}
             onClose={() => setShowWelcome(false)}
             onStart={(type, withAi) => {
               setShowWelcome(false)
@@ -499,9 +512,28 @@ export default function App() {
         <span>{model.systems.length} systems</span>
         <span>{model.questions.filter((q) => q.status === "open").length} open questions</span>
         {nav.level === "company" && (
-          <button type="button" onClick={() => { const id = newId("area"); commit((m) => ({ ...m, areas: [...m.areas, { id, name: `Stage ${m.areas.length + 1}`, order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length] }] })); setSelection({ kind: "area", id }) }} className="flex items-center gap-0.5 hover:text-foreground">
+          <label className="relative flex cursor-pointer items-center gap-0.5 hover:text-foreground" title="Add a stage: pick a typical one or name your own">
             <Plus className="h-3 w-3" /> stage
-          </button>
+            <select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value
+                if (!v) return
+                const starter = v === "__custom__" ? undefined : allStageStarters().find((st) => st.name === v)
+                const name = starter ? starter.name : (prompt("Name the stage") ?? "").trim()
+                if (!name) return
+                const id = newId("area")
+                commit((m) => ({ ...m, areas: [...m.areas, { id, name, order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length], side: starter?.side, sketch: starter?.nodes }] }))
+                setSelection({ kind: "area", id })
+              }}
+              className="absolute inset-0 cursor-pointer opacity-0"
+              aria-label="Add a stage"
+            >
+              <option value="">Add a stage…</option>
+              {allStageStarters().filter((st) => !model.areas.some((a) => a.name.toLowerCase() === st.name.toLowerCase())).map((st) => <option key={st.name} value={st.name}>{st.name}</option>)}
+              <option value="__custom__">Custom name…</option>
+            </select>
+          </label>
         )}
         {nav.level === "area" && currentArea && (
           <button type="button" onClick={() => { const id = newId("proc"); commit((m) => ({ ...m, processes: [...m.processes, { id, areaId: currentArea.id, name: `Process ${m.processes.filter((p) => p.areaId === currentArea.id).length + 1}`, doc: blankDoc() }] })); navigate({ level: "process", processId: id }) }} className="flex items-center gap-0.5 hover:text-foreground">

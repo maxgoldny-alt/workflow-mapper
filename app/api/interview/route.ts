@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
-import { INTERVIEWER_RULES, OPENING_QUESTION } from "@/lib/ai/provider"
+import { DEPTH_RULES, INTERVIEWER_RULES, OPENING_QUESTION } from "@/lib/ai/provider"
 
 export const runtime = "nodejs"
 
@@ -139,6 +139,7 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
 type InterviewBody = {
+  depth?: "map" | "detail"
   messages: { role: "ai" | "user"; text: string }[]
   modelSummary: string
   userText: string | null
@@ -202,10 +203,21 @@ function resolveStageProcess(ops: Record<string, unknown>[], body: InterviewBody
   const stage = areas.find((a) => String(a.area ?? "").toLowerCase() === area.toLowerCase())
   const stageProcs = (stage?.processes ?? []).map((p) => String(p.process ?? "")).filter(Boolean)
   const target = stageProcs.find((p) => p.toLowerCase() === area.toLowerCase()) ?? stageProcs[0] ?? area
+  let used = false
+  // A stage with no workflow yet gets exactly one, named after the stage: rename any new process the model invents
+  if (stageProcs.length === 0) {
+    for (const o of ops) {
+      if (o.op === "ensureProcess" && typeof o.name === "string" && !allProcs.some((p) => p.toLowerCase() === (o.name as string).toLowerCase())) {
+        const invented = (o.name as string).trim().toLowerCase()
+        o.name = target
+        o.area = area
+        for (const x of ops) if ((x.op === "addNode" || x.op === "connect" || x.op === "frame" || x.op === "addQuestion") && typeof x.process === "string" && x.process.trim().toLowerCase() === invented) x.process = target
+      }
+    }
+  }
   const known = new Set(
     [...allProcs, ...ops.filter((o) => o.op === "ensureProcess" && typeof o.name === "string").map((o) => o.name as string)].map((p) => p.trim().toLowerCase()),
   )
-  let used = false
   for (const o of ops) {
     if (o.op !== "addNode" && o.op !== "connect" && o.op !== "frame") continue
     if (typeof o.process === "string" && known.has(o.process.trim().toLowerCase())) continue
@@ -325,7 +337,9 @@ async function base44Turn(body: InterviewBody, appId: string) {
   if (body.userText !== null) transcript.push(`User: ${body.userText}`)
   if (!transcript.length || body.messages[0]?.role === "ai") transcript.unshift("User: (Start the interview.)")
 
-  const rules = body.instructions?.trim() || INTERVIEWER_RULES
+  const rules = `${body.instructions?.trim() || INTERVIEWER_RULES}
+
+${DEPTH_RULES[body.depth === "detail" ? "detail" : "map"]}`
   const prompt = `${rules}
 
 ${OPS_GUIDE}

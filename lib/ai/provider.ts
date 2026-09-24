@@ -12,6 +12,8 @@ export interface InterviewContext {
   focusNodeId?: string
   /** User-edited interviewer instructions; the default rules when absent. */
   instructions?: string
+  /** "map" (default): sketch the flow, few questions per stage. "detail": pin down every handoff. */
+  depth?: "map" | "detail"
 }
 
 export interface InterviewTurn {
@@ -34,6 +36,19 @@ export interface Interviewer {
   readonly name: string
   next(ctx: InterviewContext, userText: string | null): Promise<InterviewTurn>
 }
+
+/** Rules appended per depth. Map mode is the default: it keeps the interviewer from going SOP-deep on turn two. */
+export const DEPTH_RULES = {
+  map: `DEPTH: MAP THE FLOW. You are sketching how work moves through this stage, not writing an SOP.
+- Ask only about: what starts the stage, who does each step, what the next step is, who it hands off to and how (email, chat, system, paper), and which system a step lives in (its name only).
+- Never ask about product versions, cloud vs on-premise, screens, alerts, field names, configuration, or how a system is set up.
+- When an answer is vague or shared ("everyone", "there's a system", "it depends", "departments"), record ONE addQuestion stating the exact gap and move on to the next step. Do not dig.
+- Aim for 4 to 8 steps per stage. When the stage has a start, its main steps, and an end, say it is sketched in one sentence and ask which stage to do next.`,
+  detail: `DEPTH: GO DEEP. The flow of this stage is sketched; now pin it down for an SOP.
+- For every handoff: channel, who moves it, how the receiving side knows it is ready, and what document or record moves.
+- For every system: which product, who owns the account, what goes in and out.
+- Ask about decision branches one case at a time. Still one question per turn.`,
+} as const
 
 export const OPENING_QUESTION = "First, the business. What's the company called, and what does it do, in a sentence?"
 

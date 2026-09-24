@@ -31,6 +31,7 @@ export const claudeInterviewer: Interviewer = {
         focusNode: f.node?.label,
         stageVocabulary: stageVocabularyFor(ctx.model.company.industry),
         opening: userText === null ? contextualOpening(ctx) : undefined,
+        depth: ctx.depth ?? "map",
       }),
     })
     if (res.status === 503) throw new NoApiKeyError()

@@ -166,3 +166,10 @@ export function stageStarterByName(name: string): StageStarter | undefined {
   }
   return undefined
 }
+
+/** Every known stage starter across business types, deduped by name, for the "add a stage" picker. */
+export function allStageStarters(): StageStarter[] {
+  const seen = new Map<string, StageStarter>()
+  for (const b of BUSINESS_TYPES) for (const st of b.stages) if (!seen.has(st.name.toLowerCase())) seen.set(st.name.toLowerCase(), st)
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+}

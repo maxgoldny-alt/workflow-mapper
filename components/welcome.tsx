@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 import { BUSINESS_TYPES, type BusinessType } from "@/lib/loops"
 
 interface WelcomeProps {
+  companies: { id: string; name: string; active: boolean }[]
+  onOpenCompany: (id: string) => void
   /** Create a company with this loop, then optionally open the interviewer. */
   onStart: (type: BusinessType, withAi: boolean) => void
   onExploreSample: () => void
@@ -17,7 +19,7 @@ interface WelcomeProps {
  * First-run card. Explains the three ideas the product rests on, then offers
  * the AI interview or the sample company. Reopens from the "?" in the header.
  */
-export function Welcome({ onStart, onExploreSample, onClose }: WelcomeProps) {
+export function Welcome({ companies, onOpenCompany, onStart, onExploreSample, onClose }: WelcomeProps) {
   const [picking, setPicking] = useState(false)
   const [type, setType] = useState<BusinessType>("service")
 
@@ -32,7 +34,7 @@ export function Welcome({ onStart, onExploreSample, onClose }: WelcomeProps) {
             <X className="h-4 w-4" />
           </button>
           <h2 className="text-center text-lg font-semibold">What type of business are we mapping?</h2>
-          <p className="mt-1 text-center text-sm text-muted-foreground">You get a starter loop with the right stage names. Rename anything later.</p>
+          <p className="mt-1 text-center text-sm text-muted-foreground">You get the typical stages for that kind of business as a starting point. Add, rename, or delete any of them; the AI adds a stage when you describe work that belongs to one.</p>
           <div className="mt-5 grid grid-cols-2 gap-2">
             {BUSINESS_TYPES.map((b) => (
               <button
@@ -46,9 +48,10 @@ export function Welcome({ onStart, onExploreSample, onClose }: WelcomeProps) {
               </button>
             ))}
           </div>
-          <div className="mt-5 flex gap-2">
-            <Button className="flex-1" onClick={() => onStart(type, true)}>Build the loop with AI</Button>
-            <Button variant="outline" className="flex-1" onClick={() => onStart(type, false)}>Just give me the loop</Button>
+          <div className="mt-5 flex flex-col gap-2">
+            <Button onClick={() => onStart(type, true)}>Create it and start the interview</Button>
+            <Button variant="outline" onClick={() => onStart(type, false)}>Create it, I will fill it in myself</Button>
+            <p className="text-center text-[11px] text-muted-foreground">Both give the same map. The interview just starts asking right away; you can open it any time.</p>
           </div>
         </div>
       </div>
@@ -79,7 +82,20 @@ export function Welcome({ onStart, onExploreSample, onClose }: WelcomeProps) {
           </Step>
         </ol>
 
-        <div className="mt-6 flex gap-2">
+        {companies.length > 0 && (
+          <div className="mt-5">
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Your companies</div>
+            <div className="flex flex-wrap gap-1.5">
+              {companies.map((c) => (
+                <button key={c.id} type="button" onClick={() => onOpenCompany(c.id)} className={cn("rounded-full border px-3 py-1 text-xs", c.active ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex gap-2">
           <Button className="flex-1" onClick={() => setPicking(true)}>
             Start a new company
           </Button>
