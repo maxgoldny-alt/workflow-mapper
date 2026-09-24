@@ -218,6 +218,9 @@ const inquiryToQuote: Doc = {
 
 function serviceBusiness(): Model {
   const m = loopModel("service", "Northside Plumbing")
+  const areaByName = (n: string) => m.areas.find((a) => a.name === n)!
+  areaByName("Approval").sketch = [{ label: "Customer replies by email or phone", kind: "step" }, { label: "Approved?", kind: "decision" }, { label: "Deposit paid", kind: "step" }]
+  areaByName("Exceptions").sketch = [{ label: "Change order on site", kind: "exception" }, { label: "Callback / rework", kind: "exception" }]
   m.company.description = "Residential plumbing and drain repair, two vans, five people"
   const stage = (name: string) => m.areas.find((a) => a.name === name)!
   stage("Lead Source").purpose = "Google, referrals, yard signs"

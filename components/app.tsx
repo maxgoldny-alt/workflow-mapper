@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import {
   AREA_COLORS,
   blankDoc,
+  blankModel,
   newId,
   processById,
   updateProcessDoc,
@@ -29,6 +30,7 @@ import { createScriptedInterviewer } from "@/lib/ai/scripted"
 import type { Interviewer } from "@/lib/ai/provider"
 import { OverviewCanvas } from "./overview-canvas"
 import { LoopView } from "./loop-view"
+import { LoopMap } from "./loop-map"
 import { loopModel, type BusinessType } from "@/lib/loops"
 import { AreaView } from "./area-view"
 import { ProcessCanvas } from "./process-canvas"
@@ -42,8 +44,9 @@ import { Welcome } from "./welcome"
 const subscribeNoop = () => () => {}
 
 export default function App() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => [workspaceFromTemplate()])
-  const [activeId, setActiveId] = useState(() => workspaces[0].id)
+  // Deterministic boot state so server and client render the same tree; real state loads after mount
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => [{ id: "ws_boot", name: "Loading…", model: blankModel("Loading…") }])
+  const [activeId, setActiveId] = useState("ws_boot")
   const [loaded, setLoaded] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
 
@@ -51,7 +54,7 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null)
   const [view, setView] = useState<View>("operational")
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [companyView, setCompanyView] = useState<"loop" | "canvas">("loop")
+  const [companyView, setCompanyView] = useState<"map" | "cards" | "canvas">("map")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { resolvedTheme, setTheme } = useTheme()
@@ -296,7 +299,7 @@ export default function App() {
 
         <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Crumb active={nav.level === "company"} onClick={() => navigate({ level: "company" })}>{model.company.name}</Crumb>
-          {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Business Loop</span>}
+          {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Operating Map</span>}
           {currentArea && (
             <>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -342,7 +345,13 @@ export default function App() {
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          {nav.level === "company" && companyView === "loop" && (
+          {nav.level === "company" && companyView === "map" && (
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <LoopMap model={model} findings={findings} selection={selection} setSelection={setSelection} onOpenArea={openArea} onMapArea={mapArea} onAskAbout={askAbout} onNavigate={navigate} commit={commit} snapshot={snapshot} />
+              <MapStyle value={companyView} onChange={setCompanyView} />
+            </div>
+          )}
+          {nav.level === "company" && companyView === "cards" && (
             <LoopView
               model={model}
               findings={findings}
@@ -356,10 +365,11 @@ export default function App() {
               onShowCanvas={() => setCompanyView("canvas")}
             />
           )}
+          {nav.level === "company" && companyView === "cards" && <MapStyle value={companyView} onChange={setCompanyView} />}
           {nav.level === "company" && companyView === "canvas" && (
             <div className="relative flex min-h-0 flex-1 flex-col">
               <OverviewCanvas model={model} findings={findings} selection={selection} setSelection={setSelection} commit={commit} snapshot={snapshot} onOpenArea={openArea} onStartInterview={() => setDrawerOpen(true)} />
-              <Button variant="secondary" size="sm" className="absolute right-3 top-3 z-30" onClick={() => setCompanyView("loop")}>Back to loop</Button>
+              <Button variant="secondary" size="sm" className="absolute right-3 top-3 z-30" onClick={() => setCompanyView("map")}>Back to map</Button>
             </div>
           )}
           {nav.level === "area" && currentArea && (
@@ -434,6 +444,18 @@ export default function App() {
         )}
         <button type="button" onClick={deleteWorkspace} className="ml-auto hover:text-foreground">Delete company</button>
       </footer>
+    </div>
+  )
+}
+
+function MapStyle({ value, onChange }: { value: "map" | "cards" | "canvas"; onChange: (v: "map" | "cards" | "canvas") => void }) {
+  return (
+    <div className="absolute right-3 top-3 z-30 flex items-center rounded-md border border-border bg-card/95 p-0.5 text-xs shadow-sm backdrop-blur">
+      {(["map", "cards"] as const).map((v) => (
+        <button key={v} type="button" onClick={() => onChange(v)} className={cn("rounded px-2 py-0.5", value === v ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
+          {v === "map" ? "Loop Map" : "Card Summary"}
+        </button>
+      ))}
     </div>
   )
 }

@@ -61,7 +61,7 @@ export function LoopView({ model, findings, selection, setSelection, commit, onO
               {areas.length} stages · {model.processes.length} workflows mapped · click a stage for details, double-click to drill in
             </p>
           </div>
-          <div className="ml-auto flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="mr-44 ml-auto flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
             <Button variant="outline" size="sm" onClick={addStage}><Plus className="mr-1 h-3.5 w-3.5" /> Stage</Button>
             <Button variant="ghost" size="sm" onClick={onShowCanvas} title="Free-form canvas of the stages"><Map className="mr-1 h-3.5 w-3.5" /> Canvas</Button>
           </div>

@@ -242,11 +242,21 @@ export interface Process {
   verification?: Verification
 }
 
+/** A placeholder node on the loop map, shown until the stage has a mapped workflow. */
+export interface SketchNode {
+  label: string
+  kind: "source" | "step" | "decision" | "exception"
+}
+
 export interface ProcessArea {
   id: string
   name: string
   purpose?: string
   order: number
+  /** Off the main flow: drawn as a side branch (exceptions, returns, support). */
+  side?: boolean
+  /** Key nodes to draw before a workflow exists under this stage. */
+  sketch?: SketchNode[]
   x?: number
   y?: number
   color?: string
