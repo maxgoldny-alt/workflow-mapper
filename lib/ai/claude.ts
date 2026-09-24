@@ -1,4 +1,5 @@
-import type { InterviewContext, InterviewTurn, Interviewer } from "./provider"
+import { stageVocabularyFor } from "@/lib/loops"
+import { contextualOpening, resolveFocus, type InterviewContext, type InterviewTurn, type Interviewer } from "./provider"
 import { summarizeModel, type Op } from "./ops"
 
 export class NoApiKeyError extends Error {
@@ -13,7 +14,9 @@ export class NoApiKeyError extends Error {
 export const claudeInterviewer: Interviewer = {
   name: "AI",
   async next(ctx: InterviewContext, userText: string | null): Promise<InterviewTurn> {
-    const focus = ctx.focusProcessId ? ctx.model.processes.find((p) => p.id === ctx.focusProcessId)?.name : undefined
+    const f = resolveFocus(ctx)
+    // The workflow being mapped: the focused stage's own workflow when the user is inside a stage, else the focused process
+    const focus = f.level !== "company" ? f.process?.name : ctx.focusProcessId ? ctx.model.processes.find((p) => p.id === ctx.focusProcessId)?.name : undefined
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -23,6 +26,11 @@ export const claudeInterviewer: Interviewer = {
         instructions: ctx.instructions,
         userText,
         focus,
+        level: f.level,
+        focusArea: f.area?.name,
+        focusNode: f.node?.label,
+        stageVocabulary: stageVocabularyFor(ctx.model.company.industry),
+        opening: userText === null ? contextualOpening(ctx) : undefined,
       }),
     })
     if (res.status === 503) throw new NoApiKeyError()

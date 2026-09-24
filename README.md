@@ -1,20 +1,24 @@
 # Workflow Mapper
 
-Explain how the business works; an operational model builds itself.
+A clean map of how a business actually runs today, end to end. Not how it should run: how it runs, dysfunction included.
 
-An AI interviewer asks the questions an operations analyst would ask, one at a time, and turns the answers into a structured **current-state** model: process areas, processes, actors, steps, decisions, systems, platforms, data objects, handoffs, and the questions nobody has answered yet. The canvas is a view of that model, and everything the AI creates can be edited by hand.
+A business owner opens it, picks the kind of business, and gets the operating loop on one screen. From there they talk through each stage (or type the steps in) and the map fills itself. The same facts feed the diagram, the SOP, the data-flow view, and the diagnostics: manual handoffs, re-entered data, one-person dependencies, open questions. The result can go to a consultant, an automation builder, or an AI agent.
 
-## Levels
+## Three zoom levels, one model
 
 ```
-Company  →  Process Area  →  Process  →  Steps
+Operating Map  →  Stage page (Steps · Diagram · SOP · Data)  →  Edit by hand
 ```
 
-- **Company overview**: one card per process area, arrows for the major handoffs between them. No detail leaks up.
-- **Area**: its processes as cards.
-- **Process**: the swimlane editor. Each lane is an actor; every lane-crossing edge is a handoff.
+- **Operating Map**: every stage of the business loop on one screen, as a loop, not a line. Mapped stages show their key steps; unmapped stages show what is typical for that kind of business, dashed. Exceptions sit on a side path. Gap pills point at what the map has found.
+- **Stage page**: one stage, four tabs on the same data. **Steps** is the fast capture layer: add, rename, reassign, delete steps without a canvas. **Diagram** is the swimlane view (read-mostly). **SOP** is the generated procedure. **Data** shows systems used, what moves between people, and data in/out per step.
+- **Edit by hand**: the full swimlane editor, opened on purpose from the Diagram tab. Drawing tools, connect handles, lanes, frames, overlays live only here.
 
-Breadcrumbs in the top bar move between levels. Double-click an area or process card to drill in.
+## AI, assisted not interview-only
+
+The interviewer starts wherever you are: on the map it asks which stage to talk through; on a stage it asks what happens first or what comes after the last step; on a step it asks how the next person knows it is ready. It knows the typical stages for the kind of business and adds one to the map when you describe work that belongs there, but it never forces a stage you do not have. "I don't know" becomes an open question, never a guess.
+
+Providers: Base44 InvokeLLM when `BASE44_APP_ID` is set (see AGENTS.md), Anthropic when `ANTHROPIC_API_KEY` is set, otherwise a scripted fallback so the app always works.
 
 ## Handoffs record how work moves today
 

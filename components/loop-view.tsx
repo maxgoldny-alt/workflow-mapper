@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowRight, HelpCircle, AlertTriangle, Server, Layers, Plus, Sparkles, Map } from "lucide-react"
+import { ArrowRight, HelpCircle, AlertTriangle, Server, Layers, Plus, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -27,7 +27,6 @@ interface LoopViewProps {
   onMapArea: (areaId: string) => void
   onAskAbout: (areaId: string) => void
   onStartInterview: () => void
-  onShowCanvas: () => void
 }
 
 /**
@@ -35,7 +34,7 @@ interface LoopViewProps {
  * Shallow on purpose. Each card summarises what sits under it; drilling in
  * opens the existing area/process depth.
  */
-export function LoopView({ model, findings, selection, setSelection, commit, onOpenArea, onMapArea, onAskAbout, onStartInterview, onShowCanvas }: LoopViewProps) {
+export function LoopView({ model, findings, selection, setSelection, commit, onOpenArea, onMapArea, onAskAbout, onStartInterview }: LoopViewProps) {
   const areas = [...model.areas].sort((a, b) => a.order - b.order)
   const issues = findings.filter((f) => f.rule !== "unresolved-question" && f.rule !== "cross-actor-handoff")
   const questions = openQuestions(model)
@@ -63,7 +62,6 @@ export function LoopView({ model, findings, selection, setSelection, commit, onO
           </div>
           <div className="mr-44 ml-auto flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
             <Button variant="outline" size="sm" onClick={addStage}><Plus className="mr-1 h-3.5 w-3.5" /> Stage</Button>
-            <Button variant="ghost" size="sm" onClick={onShowCanvas} title="Free-form canvas of the stages"><Map className="mr-1 h-3.5 w-3.5" /> Canvas</Button>
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, ArrowRight, Diamond, HelpCircle, Plus, Sparkles, Trash2, Zap, Layers } from "lucide-react"
+import { Diamond, HelpCircle, Plus, Trash2, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -9,8 +9,6 @@ import {
   edgeHow,
   isManualEdge,
   newId,
-  openQuestions,
-  processesInArea,
   updateProcessDoc,
   type Doc,
   type Model,
@@ -22,42 +20,35 @@ import { addOutlineStep, outlineOrder, predecessor, reassignStep, removeStep } f
 import type { Finding } from "@/lib/findings"
 import type { Selection } from "@/lib/selection"
 
-interface StageOutlineProps {
+export interface StageOutlineProps {
   model: Model
   area: ProcessArea
+  /** The workflow being edited (the stage page picks it). Undefined: the stage has none yet; the first added step creates one. */
+  process: Process | undefined
   findings: Finding[]
   selection: Selection
   setSelection: (s: Selection) => void
   commit: (fn: (m: Model) => Model) => void
-  onOpenWorkflow: (processId: string) => void
-  onAskAbout: (areaId: string) => void
-  onBack: () => void
+  /** Gap pills link here ("open in diagram"). */
+  onOpenDiagram?: () => void
 }
 
 /**
- * Level 2: one stage as an ordered outline of its steps. Fast capture: add,
- * rename, reassign, and delete steps here without the canvas. Every edit
- * writes to the same swimlane doc the workflow view renders.
+ * The Steps tab of a stage: its workflow as an ordered outline. Fast capture:
+ * add, rename, reassign, and delete steps without the canvas. Every edit
+ * writes to the same swimlane doc the Diagram tab renders.
  */
-export function StageOutline({ model, area, findings, selection, setSelection, commit, onOpenWorkflow, onAskAbout, onBack }: StageOutlineProps) {
-  const procs = processesInArea(model, area.id)
-  const [pickedId, setPickedId] = useState<string | null>(null)
-  const process: Process | undefined = procs.find((p) => p.id === pickedId) ?? procs[0]
-  const color = area.color ?? "#64748b"
+export function StageOutline({ area, process, findings, selection, setSelection, commit, onOpenDiagram }: StageOutlineProps) {
   const doc = process?.doc
   const steps = doc ? outlineOrder(doc) : []
   const mapped = steps.length > 0
   const actors = doc ? doc.lanes.map((l) => l.actor).filter((a) => !/^actor \d+$/i.test(a)) : []
-  const pids = new Set(procs.map((p) => p.id))
-  const questions = openQuestions(model).filter((q) => q.ref.areaId === area.id || (q.ref.processId && pids.has(q.ref.processId)))
-  const issues = findings.filter((f) => f.rule !== "unresolved-question" && f.rule !== "cross-actor-handoff" && (f.ref.areaId === area.id || (f.ref.processId && pids.has(f.ref.processId))))
 
   /** Ensure the stage has a workflow to write into, then apply a doc edit. */
   const editDoc = (fn: (d: Doc) => Doc) => {
     if (process) return commit((m) => updateProcessDoc(m, process.id, fn))
     const id = newId("proc")
     commit((m) => ({ ...m, processes: [...m.processes, { id, areaId: area.id, name: area.name, doc: fn(blankDoc()) }] }))
-    setPickedId(id)
   }
 
   const addStep = (label: string, actor: string, type: "step" | "decision") => editDoc((d) => addOutlineStep(d, { label, actor, type }).doc)
@@ -67,40 +58,6 @@ export function StageOutline({ model, area, findings, selection, setSelection, c
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-canvas" onPointerDown={() => setSelection({ kind: "area", id: area.id })}>
       <div className="mx-auto max-w-3xl px-6 py-5">
-        <button type="button" onClick={onBack} className="mb-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" /> Operating Map
-        </button>
-
-        <div className="mb-4 flex flex-wrap items-start gap-3">
-          <span className="mt-1.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold">{area.name}</h2>
-            <p className="text-xs text-muted-foreground">
-              {mapped ? `${steps.length} steps · ${actors.length} ${actors.length === 1 ? "person" : "people"}` : "Not mapped yet"}
-              {issues.length > 0 && <span className="text-red-600"> · {issues.length} {issues.length === 1 ? "issue" : "issues"}</span>}
-              {questions.length > 0 && <span className="text-amber-600"> · {questions.length} open</span>}
-            </p>
-          </div>
-          <div className="flex gap-2" onPointerDown={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" onClick={() => onAskAbout(area.id)}><Sparkles className="mr-1 h-3.5 w-3.5" /> Ask AI</Button>
-            {process && (
-              <Button variant="outline" size="sm" onClick={() => onOpenWorkflow(process.id)} title="Decisions, branches, systems, and data on the swimlane canvas">
-                <Layers className="mr-1 h-3.5 w-3.5" /> Open full workflow <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {procs.length > 1 && (
-          <div className="mb-3 flex flex-wrap gap-1" onPointerDown={(e) => e.stopPropagation()}>
-            {procs.map((p) => (
-              <button key={p.id} type="button" onClick={() => setPickedId(p.id)} className={cn("rounded-full border px-2.5 py-0.5 text-xs", p.id === process?.id ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
-
         {!mapped && (area.sketch?.length ?? 0) > 0 && (
           <div className="mb-3 rounded-lg border border-dashed border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
             Typical for this kind of business: {area.sketch!.map((s) => s.label).join(" → ")}. Add the real steps below.
@@ -122,7 +79,7 @@ export function StageOutline({ model, area, findings, selection, setSelection, c
               onActor={(a) => editDoc((d) => reassignStep(d, n.id, a))}
               onToggleDecision={() => setType(n.id, n.type === "decision" ? "step" : "decision")}
               onDelete={() => editDoc((d) => removeStep(d, n.id))}
-              onOpen={() => process && onOpenWorkflow(process.id)}
+              onOpen={onOpenDiagram}
             />
           ))}
         </ol>
@@ -131,7 +88,7 @@ export function StageOutline({ model, area, findings, selection, setSelection, c
 
         {mapped && (
           <p className="mt-4 text-[11px] text-muted-foreground">
-            Steps added here appear on the swimlane canvas in the right lane. Open the full workflow for branches, systems, and what data moves.
+            Steps added here appear in the Diagram tab in the right lane, and in the SOP.
           </p>
         )}
       </div>
@@ -151,7 +108,7 @@ function StepRow({ n, index, doc, actors, findings, selected, onSelect, onRename
   onActor: (a: string) => void
   onToggleDecision: () => void
   onDelete: () => void
-  onOpen: () => void
+  onOpen?: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(n.label)
@@ -207,7 +164,7 @@ function StepRow({ n, index, doc, actors, findings, selected, onSelect, onRename
             <span className={manual ? "text-red-600" : "text-amber-600"}>↳ handoff from {prevLane.actor} · {edgeHow(edge)}</span>
           )}
           {gaps.map((g) => (
-            <button key={g.id} type="button" onClick={onOpen} className="flex items-center gap-1 text-amber-600 hover:underline" title={g.detail}>
+            <button key={g.id} type="button" onClick={onOpen} disabled={!onOpen} className="flex items-center gap-1 text-amber-600 enabled:hover:underline" title={onOpen ? `${g.detail} (open in diagram)` : g.detail}>
               <HelpCircle className="h-3 w-3" /> {g.title}
             </button>
           ))}

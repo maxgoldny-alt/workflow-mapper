@@ -75,6 +75,8 @@ export interface ProcessCanvasProps {
   snapshot: () => void
   undo: () => void
   redo: () => void
+  /** Read-mostly: no drawing tools, connect handles, or creation shortcuts. Select, drag, and zoom still work. */
+  readOnly?: boolean
 }
 
 /**
@@ -82,7 +84,7 @@ export interface ProcessCanvasProps {
  * editing and the viewport; everything else (model, history, navigation)
  * belongs to the app shell.
  */
-export function ProcessCanvas({ model, process, findings, view, selection, setSelection, commitDoc, snapshot, undo, redo }: ProcessCanvasProps) {
+export function ProcessCanvas({ model, process, findings, view, selection, setSelection, commitDoc, snapshot, undo, redo, readOnly = false }: ProcessCanvasProps) {
   const doc = process.doc
   const commit = commitDoc
 
@@ -428,6 +430,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
         deleteSelection()
         return
       }
+      if (readOnly) return
       const k = e.key.toLowerCase()
       if (k === "v") setTool({ kind: "select" })
       else if (k === "h") setTool({ kind: "hand" })
@@ -447,7 +450,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
       window.removeEventListener("keydown", onKeyDown)
       window.removeEventListener("keyup", onKeyUp)
     }
-  }, [selection, undo, redo, deleteSelection, createLane, nudge, selectAll, setSelection])
+  }, [selection, undo, redo, deleteSelection, createLane, nudge, selectAll, setSelection, readOnly])
 
   /* ------------------------------------------------------------------ render */
 
@@ -473,7 +476,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
 
   return (
     <div className="flex min-h-0 flex-1">
-      <Toolbar tool={tool} onToolChange={setTool} onAddLane={createLane} />
+      {!readOnly && <Toolbar tool={tool} onToolChange={setTool} onAddLane={createLane} />}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div
@@ -596,6 +599,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
                   isConnectTarget={drag?.kind === "connect" && connectPreview?.targetId === n.id}
                   isEditing={editingId === n.id}
                   interactive={interactive}
+                  connectable={interactive && !readOnly}
                   onPointerDown={onNodePointerDown}
                   onStartConnect={onStartConnect}
                   onStartEditing={setEditingId}
@@ -614,19 +618,25 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
           {doc.nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <p className="rounded-lg border border-dashed border-border bg-card/90 px-4 py-2 text-center text-sm text-muted-foreground">
-                Press <Kbd>1</Kbd> then click inside a lane to add the first step, or open the AI interview and describe this process.
-                <br />
-                <span className="text-xs">
-                  Double-click a lane header to name the actor. <Kbd>L</Kbd> adds another lane.
-                </span>
+                {readOnly ? (
+                  <>No steps yet. Add them in the Steps tab, or ask the AI about this stage.</>
+                ) : (
+                  <>
+                    Press <Kbd>1</Kbd> then click inside a lane to add the first step, or open the AI interview and describe this process.
+                    <br />
+                    <span className="text-xs">
+                      Double-click a lane header to name the actor. <Kbd>L</Kbd> adds another lane.
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           )}
 
           {/* Edge type for the next connection + zoom, tucked into the corners */}
           <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1 rounded-lg border border-border bg-card/95 px-2 py-1 shadow-lg backdrop-blur">
-            <span className="text-[11px] text-muted-foreground">Next edge</span>
-            {EDGE_TYPES.map((t) => (
+            {!readOnly && <span className="text-[11px] text-muted-foreground">Next edge</span>}
+            {!readOnly && EDGE_TYPES.map((t) => (
               <button
                 key={t}
                 type="button"
@@ -641,7 +651,7 @@ export function ProcessCanvas({ model, process, findings, view, selection, setSe
                 <span className="block h-0.5 w-2.5 rounded" style={{ backgroundColor: EDGE_TYPE_META[t].color }} />
               </button>
             ))}
-            <span className="mx-1 h-4 w-px bg-border" />
+            {!readOnly && <span className="mx-1 h-4 w-px bg-border" />}
             <button type="button" onClick={() => setMotion((m) => !m)} className={cn("rounded p-1", motion ? "text-foreground" : "text-muted-foreground hover:bg-muted")} title="Animate flow">
               <Waves className="h-3.5 w-3.5" />
             </button>

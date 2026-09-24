@@ -138,7 +138,82 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 - frame {process, name, steps: [step labels]}  — group steps into a named phase ("Order entry", "Shipping") once a phase is clear
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
-type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string; instructions?: string }
+type InterviewBody = {
+  messages: { role: "ai" | "user"; text: string }[]
+  modelSummary: string
+  userText: string | null
+  /** The workflow (process) being mapped. */
+  focus?: string
+  instructions?: string
+  /** Where the user is: the whole map, one stage, or one step. */
+  level?: "company" | "stage" | "step"
+  /** Name of the focused stage (area). */
+  focusArea?: string
+  /** Label of the focused step. */
+  focusNode?: string
+  /** Typical stage names for this kind of business. */
+  stageVocabulary?: string[]
+  /** The client's contextual first question, used verbatim when userText is null. */
+  opening?: string
+}
+
+const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined)
+
+const vocabulary = (body: InterviewBody) =>
+  Array.isArray(body.stageVocabulary) ? body.stageVocabulary.filter((v): v is string => typeof v === "string" && !!v.trim()).map((v) => v.trim()) : []
+
+/** Where the user is and which stage names are allowed, as prompt text for both providers. */
+function focusContext(body: InterviewBody): string {
+  const lines: string[] = []
+  const area = str(body.focusArea)
+  const proc = str(body.focus)
+  const node = str(body.focusNode)
+  if (body.level === "step" && node && area) {
+    lines.push(`The user is looking at step "${node}" in stage "${area}"${proc ? ` (workflow "${proc}")` : ""}. Start from that step: what happens right after it, and how the next person knows it is ready. Put new steps in ${proc ? `"${proc}"` : "the stage's workflow"}.`)
+  } else if (body.level === "stage" && area) {
+    lines.push(`The user is looking at stage "${area}"; put new steps in its workflow${proc ? ` ("${proc}")` : ` (process "${area}")`}. Ask about this stage until it has a start, steps, handoffs and an end.`)
+  } else {
+    lines.push("The user is looking at the whole business loop.")
+    if (proc) lines.push(`The process currently being mapped: "${proc}". Put new steps there unless the user clearly moves on.`)
+  }
+  const vocab = vocabulary(body)
+  if (vocab.length) {
+    lines.push(`Typical stages for this kind of business: ${vocab.join(", ")}. The company may not have all of them. If the user describes work that belongs to one of these stages and it is not on the map, emit ensureArea with exactly that name. Never create an area with any other name.`)
+  }
+  return lines.join("\n")
+}
+
+type SummaryArea = { area?: string; processes?: { process?: string }[] }
+function parseAreas(modelSummary: string): SummaryArea[] {
+  try {
+    return (JSON.parse(modelSummary) as { areas?: SummaryArea[] }).areas ?? []
+  } catch {
+    return []
+  }
+}
+
+/** Inside a stage with no workflow yet, steps with a missing or unknown process land in a
+ * workflow named after the stage, created first when the model does not have it. */
+function resolveStageProcess(ops: Record<string, unknown>[], body: InterviewBody): Record<string, unknown>[] {
+  const area = str(body.focusArea)
+  if (!area || str(body.focus) || body.level === "company") return ops
+  const areas = parseAreas(body.modelSummary)
+  const allProcs = areas.flatMap((a) => (a.processes ?? []).map((p) => String(p.process ?? ""))).filter(Boolean)
+  const stage = areas.find((a) => String(a.area ?? "").toLowerCase() === area.toLowerCase())
+  const stageProcs = (stage?.processes ?? []).map((p) => String(p.process ?? "")).filter(Boolean)
+  const target = stageProcs.find((p) => p.toLowerCase() === area.toLowerCase()) ?? stageProcs[0] ?? area
+  const known = new Set(
+    [...allProcs, ...ops.filter((o) => o.op === "ensureProcess" && typeof o.name === "string").map((o) => o.name as string)].map((p) => p.trim().toLowerCase()),
+  )
+  let used = false
+  for (const o of ops) {
+    if (o.op !== "addNode" && o.op !== "connect" && o.op !== "frame") continue
+    if (typeof o.process === "string" && known.has(o.process.trim().toLowerCase())) continue
+    o.process = target
+    used = true
+  }
+  return used && !known.has(target.toLowerCase()) ? [{ op: "ensureProcess", area, name: target }, ...ops] : ops
+}
 
 
 const FILLER = new Set(["unknown", "n/a", "none", "null", "undefined", "", "-", "not specified", "not provided", "not applicable"])
@@ -174,7 +249,14 @@ function stripFiller(op: unknown): Record<string, unknown> | null {
 
 /** Keep the overview to one area per mapped process: once an area exists, redirect
  * new area names onto it instead of letting each turn invent "Sales", "Order Management"… */
-function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userText: string | null, focusName?: string): Record<string, unknown>[] {
+function foldAreas(
+  ops: Record<string, unknown>[],
+  modelSummary: string,
+  userText: string | null,
+  focusName?: string,
+  focusArea?: string,
+  stageVocabulary: string[] = [],
+): Record<string, unknown>[] {
   let existing: string[] = []
   let processes: string[] = []
   try {
@@ -192,12 +274,14 @@ function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userTex
     return words.length > 0 && words.filter((w) => said.includes(w)).length >= Math.min(2, words.length)
   }
   const knownProc = new Set(processes.map((p) => p.toLowerCase()))
-  const focus = focusName && processes.find((p) => p.toLowerCase() === focusName.toLowerCase()) ? focusName : processes[processes.length - 1]
+  // Inside a stage with no workflow yet, resolveStageProcess picks the process; do not borrow another stage's
+  const focus = focusName && processes.find((p) => p.toLowerCase() === focusName.toLowerCase()) ? focusName : focusArea ? undefined : processes[processes.length - 1]
   // With a business loop the stages already exist; new work belongs under the focused stage
   try {
     const m = JSON.parse(modelSummary) as { areas?: { area?: string; processes?: { process?: string }[] }[] }
     const owner = (m.areas ?? []).find((a) => (a.processes ?? []).some((p) => String(p.process ?? "").toLowerCase() === (focus ?? "").toLowerCase()))?.area
-    if (owner) existing = [String(owner), ...existing.filter((a) => a !== owner)]
+    const first = (focusArea ? existing.find((a) => a.toLowerCase() === focusArea.toLowerCase()) : undefined) ?? owner
+    if (first) existing = [String(first), ...existing.filter((a) => a !== first)]
   } catch {
     /* no summary */
   }
@@ -208,7 +292,14 @@ function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userTex
       if (typeof o.process === "string" && !allowed.has(o.process.toLowerCase()) && !processes.some((p) => p.toLowerCase().includes(o.process!.toString().toLowerCase()) || o.process!.toString().toLowerCase().includes(p.toLowerCase()))) o.process = focus
     }
   }
-  const known = new Set(existing.map((a) => a.toLowerCase()))
+  // A typical stage for this kind of business may be added, under its exact vocabulary name
+  const vocab = new Map(stageVocabulary.map((v) => [v.toLowerCase(), v]))
+  for (const o of ops) {
+    const v = o.op === "ensureArea" && typeof o.name === "string" ? vocab.get(o.name.trim().toLowerCase()) : undefined
+    if (v) o.name = v
+  }
+  const newStages = ops.filter((o) => o.op === "ensureArea" && typeof o.name === "string" && vocab.has(o.name.toLowerCase())).map((o) => (o.name as string).toLowerCase())
+  const known = new Set([...existing.map((a) => a.toLowerCase()), ...newStages])
   const firstNew = ops.find((o) => o.op === "ensureArea" && typeof o.name === "string")
   const target = existing[0] ?? (typeof firstNew?.name === "string" ? firstNew.name : undefined)
   if (!target) return ops
@@ -242,9 +333,9 @@ ${OPS_GUIDE}
 Opening question if the model is empty and nothing has been said: "${OPENING_QUESTION}"
 
 Current model (JSON):
-${body.modelSummary}${body.focus ? `
+${body.modelSummary}
 
-The process currently being mapped: "${body.focus}". Put new steps there unless the user clearly moves on.` : ""}
+${focusContext(body)}
 
 Conversation so far:
 ${transcript.join("\n")}
@@ -262,7 +353,7 @@ Output rules for ops:
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
     const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
-    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary, body.userText, body.focus), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
+    return NextResponse.json({ say: data.say, ops: resolveStageProcess(foldAreas(cleaned, body.modelSummary, body.userText, body.focus, str(body.focusArea), vocabulary(body)), body), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
@@ -282,9 +373,16 @@ export async function POST(req: Request) {
   }
 
   const appId = process.env.BASE44_APP_ID
-  if (appId) return base44Turn(body, appId)
-
   const apiKey = process.env.ANTHROPIC_API_KEY
+  // No provider: 503 so the client falls back to the scripted interviewer (the opening turn included)
+  if (!appId && !apiKey) return NextResponse.json({ error: "no_api_key" }, { status: 503 })
+
+  // The opening turn is the client's contextual question; no model call
+  if (body.userText === null) {
+    return NextResponse.json({ say: str(body.opening) ?? OPENING_QUESTION, ops: [], provider: appId ? "Base44" : "Claude", providerDetail: "Opening question (no model call)" })
+  }
+
+  if (appId) return base44Turn(body, appId)
   if (!apiKey) return NextResponse.json({ error: "no_api_key" }, { status: 503 })
 
   const client = new Anthropic({ apiKey })
@@ -297,7 +395,7 @@ export async function POST(req: Request) {
 
   const system: Anthropic.TextBlockParam[] = [
     { type: "text", text: `${body.instructions?.trim() || INTERVIEWER_RULES}\n\n${OPS_GUIDE}\n\nOpening question if the model is empty and nothing has been said: "${OPENING_QUESTION}"`, cache_control: { type: "ephemeral" } },
-    { type: "text", text: `Current model (JSON):\n${body.modelSummary}${body.focus ? `\n\nThe process currently being mapped: "${body.focus}". Put new steps there unless the user clearly moves on.` : ""}` },
+    { type: "text", text: `Current model (JSON):\n${body.modelSummary}\n\n${focusContext(body)}` },
   ]
 
   try {
@@ -313,7 +411,8 @@ export async function POST(req: Request) {
     const call = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
     if (!call) return NextResponse.json({ error: "no_tool_call" }, { status: 502 })
     const input = call.input as { say: string; ops: unknown[] }
-    return NextResponse.json({ say: input.say, ops: Array.isArray(input.ops) ? input.ops : [], provider: "Claude", providerDetail: `Anthropic · ${model}` })
+    const ops = Array.isArray(input.ops) ? input.ops.filter((o): o is Record<string, unknown> => !!o && typeof o === "object") : []
+    return NextResponse.json({ say: input.say, ops: resolveStageProcess(ops, body), provider: "Claude", providerDetail: `Anthropic · ${model}` })
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) return NextResponse.json({ error: "bad_api_key" }, { status: 503 })
     if (err instanceof Anthropic.RateLimitError) return NextResponse.json({ error: "rate_limited" }, { status: 429 })

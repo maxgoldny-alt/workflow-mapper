@@ -109,7 +109,7 @@ export function Inspector({ selection, model, processId, commit, onNavigate, onC
             <Field label="Name">
               <Input value={frame.name} onChange={(e) => commitDoc((d) => ({ ...d, frames: (d.frames ?? []).map((f) => (f.id === frame.id ? { ...f, name: e.target.value } : f)) }))} className="h-8 text-sm" />
             </Field>
-            <Field label="Colour">
+            <Field label="Color">
               <div className="flex flex-wrap gap-1.5">
                 {LANE_COLORS.map((c) => (
                   <button key={c} type="button" onClick={() => commitDoc((d) => ({ ...d, frames: (d.frames ?? []).map((f) => (f.id === frame.id ? { ...f, color: c } : f)) }))} className={cn("h-6 w-6 rounded-full border-2", frame.color === c ? "border-foreground" : "border-transparent")} style={{ backgroundColor: c }} />
@@ -328,7 +328,7 @@ function LaneFields({ model, doc, lane, commit, commitDoc, onClose }: { model: M
       <Field label="Kind">
         <Chips options={(["person", "role", "team", "customer", "external", "unknown"] as ActorKind[]).map((k) => ({ value: k, label: k }))} value={actor?.kind ?? "unknown"} onChange={(v) => setKind(v as ActorKind)} />
       </Field>
-      <Field label="Colour">
+      <Field label="Color">
         <div className="flex flex-wrap gap-1.5">
           {LANE_COLORS.map((c) => (
             <button key={c} type="button" onClick={() => upd({ color: c })} className={cn("h-6 w-6 rounded-full border-2", lane.color === c ? "border-foreground" : "border-transparent")} style={{ backgroundColor: c }} />
@@ -363,37 +363,17 @@ function AreaFields({ model, area, commit, onNavigate, onClose }: { model: Model
     <>
       <Field label="Name"><Input value={area.name} onChange={(e) => upd({ name: e.target.value })} className="h-8 text-sm" /></Field>
       <Field label="Purpose"><textarea value={area.purpose || ""} placeholder="What this part of the business is for" onChange={(e) => upd({ purpose: e.target.value || undefined })} className={textareaClass} /></Field>
-      <Field label="Inputs"><Input value={area.inputs || ""} placeholder="What comes in" onChange={(e) => upd({ inputs: e.target.value || undefined })} className="h-8 text-sm" /></Field>
-      <Field label="Outputs"><Input value={area.outputs || ""} placeholder="What goes out" onChange={(e) => upd({ outputs: e.target.value || undefined })} className="h-8 text-sm" /></Field>
-      <Field label="Colour">
+      <Field label="Color">
         <div className="flex flex-wrap gap-1.5">
           {LANE_COLORS.map((c) => (
             <button key={c} type="button" onClick={() => upd({ color: c })} className={cn("h-6 w-6 rounded-full border-2", area.color === c ? "border-foreground" : "border-transparent")} style={{ backgroundColor: c }} />
           ))}
         </div>
       </Field>
-      <Field label="Workflows">
-        <div className="space-y-1">
-          {procs.map((p) => (
-            <button key={p.id} type="button" onClick={() => onNavigate({ level: "process", processId: p.id })} className="flex w-full items-center gap-2 rounded-md border border-border px-2 py-1 text-left text-xs hover:bg-muted">
-              <span className="truncate">{p.name}</span>
-              <span className="ml-auto text-muted-foreground">{p.doc.nodes.length}</span>
-              <ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </button>
-          ))}
-          <Button variant="outline" size="sm" className="w-full" onClick={() => {
-            const id = newId("proc")
-            commit((m) => ({ ...m, processes: [...m.processes, { id, areaId: area.id, name: `${area.name} process`, doc: blankDoc() }] }))
-            onNavigate({ level: "process", processId: id })
-          }}>
-            <Plus className="mr-1.5 h-3 w-3" /> Add workflow
-          </Button>
-        </div>
-      </Field>
       <Field label="Notes"><textarea value={area.notes || ""} onChange={(e) => upd({ notes: e.target.value || undefined })} className={textareaClass} /></Field>
-      <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate({ level: "area", areaId: area.id })}>Open area</Button>
+      <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate({ level: "area", areaId: area.id })}>Open stage</Button>
       <Button variant="destructive" size="sm" className="w-full" onClick={() => { if (procs.some((p) => p.doc.nodes.length) && !confirm(`Delete "${area.name}" and its ${procs.length} process(es)?`)) return; commit((m) => removeArea(m, area.id)); onClose() }}>
-        <Trash2 className="mr-2 h-3 w-3" /> Delete area
+        <Trash2 className="mr-2 h-3 w-3" /> Delete stage
       </Button>
     </>
   )

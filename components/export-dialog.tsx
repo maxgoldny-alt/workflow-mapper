@@ -21,6 +21,7 @@ import {
   type Process,
 } from "@/lib/model"
 import { laneBoxes, lanesWidth, lanesHeight } from "@/lib/geometry"
+import { sopForCompany } from "@/lib/sop"
 
 interface ExportDialogProps {
   model: Model
@@ -172,6 +173,7 @@ export function ExportDialog({ model, process, workspaceName }: ExportDialogProp
 
   const mermaid = process ? generateMermaid(process.doc) : generateOverviewMermaid(model)
   const json = generateJSON(model, workspaceName)
+  const sop = open ? sopForCompany(model) : ""
   const svg = open && process ? generateSVG(process.doc, dark) : ""
 
   const copy = async (content: string, key: string) => {
@@ -240,7 +242,8 @@ export function ExportDialog({ model, process, workspaceName }: ExportDialogProp
           </TabsContent>
           <TabsContent value="code" className="mt-4 flex-1 space-y-4 overflow-auto">
             <CodeBlock title={process ? "Mermaid (this process)" : "Mermaid (overview)"} code={mermaid} copied={copied === "mermaid"} onCopy={() => copy(mermaid, "mermaid")} onDownload={() => download(mermaid, `${slug}.mmd`)} />
-            <CodeBlock title="JSON (whole company)" code={json} copied={copied === "json"} onCopy={() => copy(json, "json")} onDownload={() => download(json, `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`, "application/json")} />
+            <CodeBlock title="SOP (Markdown, whole company)" code={sop} copied={copied === "sop"} onCopy={() => copy(sop, "sop")} onDownload={() => download(sop, `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-sop.md`, "text/markdown")} />
+            <CodeBlock title="JSON (whole company: for an AI agent or automation builder)" code={json} copied={copied === "json"} onCopy={() => copy(json, "json")} onDownload={() => download(json, `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`, "application/json")} />
           </TabsContent>
         </Tabs>
       </DialogContent>

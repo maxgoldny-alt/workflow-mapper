@@ -12,6 +12,8 @@ interface InterviewPanelProps {
   model: Model
   busy: boolean
   providerName: string
+  /** Where the interviewer is looking: "the whole business", a stage name, or a stage plus one step. */
+  focusLabel?: string
   error: string | null
   onSend: (text: string) => void
   onStart: () => void
@@ -26,7 +28,7 @@ interface InterviewPanelProps {
  * answers and optional read-aloud for questions. Everything voice goes through
  * `lib/voice`, so the provider can change without touching this file.
  */
-export function InterviewPanel({ model, busy, providerName, error, onSend, onStart, onReset, onClose, onInstructions }: InterviewPanelProps) {
+export function InterviewPanel({ model, busy, providerName, focusLabel, error, onSend, onStart, onReset, onClose, onInstructions }: InterviewPanelProps) {
   const messages = model.interview.messages
   const [tuning, setTuning] = useState(false)
   const [rulesDraft, setRulesDraft] = useState(model.interview.instructions ?? INTERVIEWER_RULES)
@@ -168,6 +170,12 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
           </button>
         </div>
       </div>
+
+      {focusLabel && !tuning && (
+        <div className="border-b border-border bg-muted/40 px-3 py-1 text-[11px] text-muted-foreground">
+          Talking about <span className="font-medium text-foreground">{focusLabel}</span>. Open another stage to switch.
+        </div>
+      )}
 
       {tuning && (
         <div className="flex min-h-0 flex-1 flex-col gap-2 border-b border-border p-3">

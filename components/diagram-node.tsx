@@ -15,6 +15,8 @@ interface DiagramNodeProps {
   isConnectTarget: boolean
   isEditing: boolean
   interactive: boolean
+  /** Show connect handles; defaults to `interactive`. */
+  connectable?: boolean
   badge?: { text: string; color: string; title: string }
   onPointerDown: (e: React.PointerEvent, node: Node) => void
   onStartConnect: (e: React.PointerEvent, node: Node, side: HandleSide) => void
@@ -37,6 +39,7 @@ export function DiagramNode({
   isConnectTarget,
   isEditing,
   interactive,
+  connectable,
   badge,
   onPointerDown,
   onStartConnect,
@@ -127,7 +130,7 @@ export function DiagramNode({
         </span>
       )}
 
-      {interactive &&
+      {(connectable ?? interactive) &&
         (Object.keys(handlePositions) as HandleSide[]).map((side) => (
           <button
             key={side}

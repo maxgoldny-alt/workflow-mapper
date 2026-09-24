@@ -3,7 +3,7 @@
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useTheme } from "next-themes"
-import { ChevronRight, HelpCircle, Moon, Sun, Undo2, Redo2, Upload, Sparkles, Mic, Plus } from "lucide-react"
+import { ChevronRight, HelpCircle, Moon, Sun, Undo2, Redo2, Upload, Sparkles, Mic, Plus, PencilRuler, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
@@ -28,11 +28,10 @@ import { applyOps } from "@/lib/ai/ops"
 import { claudeInterviewer, NoApiKeyError } from "@/lib/ai/claude"
 import { createScriptedInterviewer } from "@/lib/ai/scripted"
 import type { Interviewer } from "@/lib/ai/provider"
-import { OverviewCanvas } from "./overview-canvas"
 import { LoopView } from "./loop-view"
 import { LoopMap } from "./loop-map"
 import { loopModel, type BusinessType } from "@/lib/loops"
-import { StageOutline } from "./stage-outline"
+import { StagePage, type StageTab } from "./stage-page"
 import { ProcessCanvas } from "./process-canvas"
 import { Inspector } from "./inspector"
 import { BottomTray } from "./bottom-tray"
@@ -54,7 +53,9 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null)
   const [view, setView] = useState<View>("operational")
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [companyView, setCompanyView] = useState<"map" | "cards" | "canvas">("map")
+  const [companyView, setCompanyView] = useState<"map" | "cards">("map")
+  const [stageTab, setStageTab] = useState<StageTab>("steps")
+  const [stageProcessId, setStageProcessId] = useState<string | undefined>(undefined)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { resolvedTheme, setTheme } = useTheme()
@@ -105,8 +106,30 @@ export default function App() {
     setSelection(s)
   }, [])
 
-  /** Level 2: the stage outline. The canvas (level 3) is reached from there. */
-  const openArea = (areaId: string) => navigate({ level: "area", areaId })
+  /** Level 2: the stage page (Steps / Diagram / SOP / Data). Hand editing (level 3) is reached from there. */
+  const openStage = (areaId: string, tab: StageTab = "steps", processId?: string) => {
+    setStageTab(tab)
+    setStageProcessId(processId)
+    navigate({ level: "area", areaId })
+  }
+  const openArea = (areaId: string) => openStage(areaId)
+
+  /** Navigation from findings, questions, and the map: workflows open inside their stage, never the hand editor. */
+  const goTo = useCallback(
+    (n: Nav, s: Selection = null) => {
+      if (n.level === "process") {
+        const p = model.processes.find((x) => x.id === n.processId)
+        if (p) {
+          setStageTab(s?.kind === "node" || s?.kind === "edge" ? "diagram" : "steps")
+          setStageProcessId(p.id)
+          navigate({ level: "area", areaId: p.areaId }, s)
+          return
+        }
+      }
+      navigate(n, s)
+    },
+    [model.processes, navigate],
+  )
 
   const commitDoc = useCallback(
     (fn: (d: Doc) => Doc, hist = true) => {
@@ -131,7 +154,17 @@ export default function App() {
       const userMsg = userText !== null ? { id: newId("m"), role: "user" as const, text: userText, at: Date.now() } : null
       if (userMsg) commit((m) => ({ ...m, interview: { ...m.interview, messages: [...m.interview.messages, userMsg] } }))
       const baseModel = userMsg ? { ...model, interview: { ...model.interview, messages: [...model.interview.messages, userMsg] } } : model
-      const ctx = { model: baseModel, messages: baseModel.interview.messages, focusProcessId: nav.level === "process" ? nav.processId : baseModel.interview.focusProcessId, instructions: baseModel.interview.instructions }
+      const focusAreaId = nav.level === "area" ? nav.areaId : nav.level === "process" ? baseModel.processes.find((p) => p.id === nav.processId)?.areaId : undefined
+      const focusNodeId = selection?.kind === "node" ? selection.id : undefined
+      const ctx = {
+        model: baseModel,
+        messages: baseModel.interview.messages,
+        level: focusNodeId && focusAreaId ? ("step" as const) : focusAreaId ? ("stage" as const) : ("company" as const),
+        focusAreaId,
+        focusNodeId,
+        focusProcessId: nav.level === "process" ? nav.processId : (baseModel.interview.focusProcessId && baseModel.processes.find((p) => p.id === baseModel.interview.focusProcessId)?.areaId === focusAreaId ? baseModel.interview.focusProcessId : undefined),
+        instructions: baseModel.interview.instructions,
+      }
 
       let turn
       const t0 = Date.now()
@@ -170,8 +203,29 @@ export default function App() {
       }
       setBusy(false)
     },
-    [commit, model, nav],
+    [commit, model, nav, selection],
   )
+
+  // Moving to another stage while the drawer is open: ask a fresh, contextual question there
+  const askedFor = useRef<string | null>(null)
+  const focusKey = nav.level === "company" ? "company" : nav.level === "area" ? `area:${nav.areaId}` : `area:${currentProcess?.areaId ?? ""}`
+  useEffect(() => {
+    if (!drawerOpen) {
+      askedFor.current = null
+      return
+    }
+    if (busy) return
+    if (askedFor.current === null) {
+      askedFor.current = focusKey
+      return
+    }
+    if (askedFor.current === focusKey) return
+    askedFor.current = focusKey
+    if (model.interview.messages.length) {
+      const t = setTimeout(() => runTurn(null), 0)
+      return () => clearTimeout(t)
+    }
+  }, [drawerOpen, focusKey, busy, model.interview.messages.length, runTurn])
 
   const resetInterview = () => {
     interviewerRef.current = claudeInterviewer
@@ -201,7 +255,7 @@ export default function App() {
   }
 
   /** "Map this stage": capture steps in the outline first; it creates the workflow on the first step. */
-  const mapArea = (areaId: string) => navigate({ level: "area", areaId })
+  const mapArea = (areaId: string) => openStage(areaId)
 
   /** Point the interviewer at one stage and open its outline. */
   const askAbout = (areaId: string) => {
@@ -215,7 +269,7 @@ export default function App() {
       commit((m) => ({ ...m, processes: [...m.processes, { id, areaId, name: area.name, doc: blankDoc() }] }))
     }
     commit((m) => ({ ...m, interview: { ...m.interview, focusProcessId: pid } }), false)
-    navigate({ level: "area", areaId })
+    if (nav.level !== "area" || nav.areaId !== areaId) openStage(areaId)
     setDrawerOpen(true)
   }
 
@@ -271,7 +325,8 @@ export default function App() {
 
   /* ---------------------------------------------------------------- render */
 
-  const inspectorProcessId = nav.level === "process" ? nav.processId : undefined
+  const stageProcess = nav.level === "area" ? (model.processes.find((p) => p.id === stageProcessId && p.areaId === nav.areaId) ?? model.processes.find((p) => p.areaId === nav.areaId)) : undefined
+  const inspectorProcessId = nav.level === "process" ? nav.processId : stageProcess?.id
   const showInspector = selection !== null
   const selectedEdgeId = selection?.kind === "edge" ? selection.id : null
 
@@ -290,12 +345,12 @@ export default function App() {
         <nav className="flex min-w-0 items-center gap-1 text-sm">
           <Crumb active={nav.level === "company"} onClick={() => navigate({ level: "company" })}>{model.company.name}</Crumb>
           {nav.level === "company" && <span className="text-[11px] text-muted-foreground">Operating Map</span>}
-          {nav.level === "area" && <span className="ml-1 text-[11px] text-muted-foreground">Stage outline</span>}
-          {nav.level === "process" && <span className="ml-1 text-[11px] text-muted-foreground">Workflow</span>}
+          {nav.level === "area" && <span className="ml-1 text-[11px] text-muted-foreground">Stage</span>}
+          {nav.level === "process" && <span className="ml-1 rounded bg-amber-500/15 px-1.5 text-[11px] text-amber-700 dark:text-amber-400">Editing by hand</span>}
           {currentArea && (
             <>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <Crumb active={nav.level === "area"} onClick={() => navigate({ level: "area", areaId: currentArea.id })}>{currentArea.name}</Crumb>
+              <Crumb active={nav.level === "area"} onClick={() => openStage(currentArea.id, nav.level === "process" ? "diagram" : stageTab, currentProcess?.id)}>{currentArea.name}</Crumb>
             </>
           )}
           {currentProcess && (
@@ -307,6 +362,16 @@ export default function App() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
+          {nav.level === "area" && stageProcess && stageTab === "diagram" && (
+            <Button variant="ghost" size="sm" className="mr-1 text-xs text-muted-foreground" onClick={() => navigate({ level: "process", processId: stageProcess.id })} title="Open the full diagram editor: draw steps, lanes, frames and connections by hand">
+              <PencilRuler className="mr-1 h-3.5 w-3.5" /> Edit by hand
+            </Button>
+          )}
+          {nav.level === "process" && currentProcess && (
+            <Button variant="secondary" size="sm" className="mr-2 text-xs" onClick={() => openStage(currentProcess.areaId, "diagram", currentProcess.id)}>
+              <Check className="mr-1 h-3.5 w-3.5" /> Done editing
+            </Button>
+          )}
           {nav.level === "process" && (
             <div className="mr-2 flex items-center rounded-md border border-border p-0.5">
               {VIEWS.map((v) => (
@@ -339,7 +404,7 @@ export default function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           {nav.level === "company" && companyView === "map" && (
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <LoopMap model={model} findings={findings} selection={selection} setSelection={setSelection} onOpenArea={openArea} onMapArea={mapArea} onAskAbout={askAbout} onNavigate={navigate} commit={commit} snapshot={snapshot} />
+              <LoopMap model={model} findings={findings} selection={selection} setSelection={setSelection} onOpenArea={openArea} onMapArea={mapArea} onAskAbout={askAbout} onNavigate={goTo} commit={commit} snapshot={snapshot} />
               <MapStyle value={companyView} onChange={setCompanyView} />
             </div>
           )}
@@ -354,27 +419,25 @@ export default function App() {
               onMapArea={mapArea}
               onAskAbout={askAbout}
               onStartInterview={() => setDrawerOpen(true)}
-              onShowCanvas={() => setCompanyView("canvas")}
             />
           )}
           {nav.level === "company" && companyView === "cards" && <MapStyle value={companyView} onChange={setCompanyView} />}
-          {nav.level === "company" && companyView === "canvas" && (
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              <OverviewCanvas model={model} findings={findings} selection={selection} setSelection={setSelection} commit={commit} snapshot={snapshot} onOpenArea={openArea} onStartInterview={() => setDrawerOpen(true)} />
-              <Button variant="secondary" size="sm" className="absolute right-3 top-3 z-30" onClick={() => setCompanyView("map")}>Back to map</Button>
-            </div>
-          )}
           {nav.level === "area" && currentArea && (
-            <StageOutline
+            <StagePage
               model={model}
               area={currentArea}
               findings={findings}
               selection={selection}
               setSelection={setSelection}
               commit={commit}
-              onOpenWorkflow={(id) => navigate({ level: "process", processId: id })}
+              snapshot={snapshot}
+              undo={undo}
+              redo={redo}
               onAskAbout={askAbout}
               onBack={() => navigate({ level: "company" })}
+              tab={stageTab}
+              onTab={setStageTab}
+              processId={stageProcessId}
             />
           )}
           {nav.level === "process" && currentProcess && (
@@ -388,20 +451,21 @@ export default function App() {
             selectedEdgeId={selectedEdgeId}
             onSelectRef={(ref) => {
               const { nav: n, selection: s } = navForRef(ref)
-              navigate(n, s)
+              goTo(n, s)
             }}
             onAnswerQuestion={(id, answer) => commit((m) => ({ ...m, questions: m.questions.map((q) => (q.id === id ? { ...q, status: "answered", answer } : q)) }))}
             onDismissQuestion={(id) => commit((m) => ({ ...m, questions: m.questions.map((q) => (q.id === id ? { ...q, status: "dismissed" } : q)) }))}
           />
         </div>
 
-        {showInspector && <Inspector selection={selection} model={model} processId={inspectorProcessId} commit={commit} onNavigate={navigate} onClose={() => setSelection(null)} />}
+        {showInspector && <Inspector selection={selection} model={model} processId={inspectorProcessId} commit={commit} onNavigate={goTo} onClose={() => setSelection(null)} />}
 
         {drawerOpen && (
           <InterviewPanel
             model={model}
             busy={busy}
             providerName={providerName}
+            focusLabel={nav.level === "company" ? "the whole business" : (currentArea?.name ?? "this stage") + (selection?.kind === "node" ? " · one step" : "")}
             error={aiError}
             onSend={(t) => runTurn(t)}
             onStart={() => runTurn(null)}
@@ -435,7 +499,7 @@ export default function App() {
         <span>{model.systems.length} systems</span>
         <span>{model.questions.filter((q) => q.status === "open").length} open questions</span>
         {nav.level === "company" && (
-          <button type="button" onClick={() => { const id = newId("area"); commit((m) => ({ ...m, areas: [...m.areas, { id, name: `Area ${m.areas.length + 1}`, order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length] }] })); setSelection({ kind: "area", id }) }} className="flex items-center gap-0.5 hover:text-foreground">
+          <button type="button" onClick={() => { const id = newId("area"); commit((m) => ({ ...m, areas: [...m.areas, { id, name: `Stage ${m.areas.length + 1}`, order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length] }] })); setSelection({ kind: "area", id }) }} className="flex items-center gap-0.5 hover:text-foreground">
             <Plus className="h-3 w-3" /> stage
           </button>
         )}
@@ -450,7 +514,7 @@ export default function App() {
   )
 }
 
-function MapStyle({ value, onChange }: { value: "map" | "cards" | "canvas"; onChange: (v: "map" | "cards" | "canvas") => void }) {
+function MapStyle({ value, onChange }: { value: "map" | "cards"; onChange: (v: "map" | "cards") => void }) {
   return (
     <div className="absolute right-3 top-3 z-30 flex items-center rounded-md border border-border bg-card/95 p-0.5 text-xs shadow-sm backdrop-blur">
       {(["map", "cards"] as const).map((v) => (

@@ -23,6 +23,7 @@ import {
 } from "@/lib/model"
 import { clampNodeToLane, laneBoxes } from "@/lib/geometry"
 import { autoArrange, boundsOf } from "@/lib/layout"
+import { stageStarterByName } from "@/lib/loops"
 
 /**
  * The only way the AI changes the model. Ops are name-based so a language
@@ -121,7 +122,13 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
   const ensureArea = (name: string, patch: Partial<{ purpose: string; inputs: string; outputs: string }> = {}) => {
     let a = findArea(name)
     if (!a) {
-      a = { id: newId("area"), name: name.trim(), order: m.areas.length, color: AREA_COLORS[m.areas.length % AREA_COLORS.length], ...patch }
+      a = { id: newId("area"), name: name.trim(), order: m.areas.reduce((mx, x) => Math.max(mx, x.order + 1), m.areas.length), color: AREA_COLORS[m.areas.length % AREA_COLORS.length], ...patch }
+      // A recognised business-loop stage arrives with its typical placeholders
+      const starter = stageStarterByName(a.name)
+      if (starter) {
+        a.sketch = starter.nodes.map((n) => ({ ...n }))
+        if (starter.side) a.side = true
+      }
       m.areas.push(a)
       derived.push(`+ Area "${a.name}"`)
     } else {

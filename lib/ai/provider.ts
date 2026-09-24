@@ -1,10 +1,15 @@
-import type { InterviewMessage, Model } from "@/lib/model"
+import { areaById, laneById, processesInArea, type InterviewMessage, type Model, type Node, type Process, type ProcessArea } from "@/lib/model"
+import { outlineOrder } from "@/lib/outline"
 import type { Op } from "./ops"
 
 export interface InterviewContext {
   model: Model
   messages: InterviewMessage[]
   focusProcessId?: string
+  /** Where the user is when they talk: the whole map, one stage, or one step. */
+  level?: "company" | "stage" | "step"
+  focusAreaId?: string
+  focusNodeId?: string
   /** User-edited interviewer instructions; the default rules when absent. */
   instructions?: string
 }
@@ -31,6 +36,77 @@ export interface Interviewer {
 }
 
 export const OPENING_QUESTION = "First, the business. What's the company called, and what does it do, in a sentence?"
+
+const DEFAULT_COMPANY_NAMES = new Set(["", "new company", "my company"])
+
+export interface ResolvedFocus {
+  level: "company" | "stage" | "step"
+  area?: ProcessArea
+  /** The workflow under the focused stage (the focused process, else the stage's most-mapped one). */
+  process?: Process
+  node?: Node
+}
+
+/** Resolve the context's ids to the stage, workflow and step the user is looking at. */
+export function resolveFocus(ctx: InterviewContext): ResolvedFocus {
+  const m = ctx.model
+  let node: Node | undefined
+  let process: Process | undefined
+  if (ctx.focusNodeId && ctx.level !== "company" && ctx.level !== "stage") {
+    for (const p of m.processes) {
+      const n = p.doc.nodes.find((x) => x.id === ctx.focusNodeId)
+      if (n) {
+        node = n
+        process = p
+        break
+      }
+    }
+  }
+  let area = process ? areaById(m, process.areaId) : ctx.focusAreaId ? areaById(m, ctx.focusAreaId) : undefined
+  const focusProc = ctx.focusProcessId ? m.processes.find((p) => p.id === ctx.focusProcessId) : undefined
+  if (!area && ctx.level === "stage" && focusProc) area = areaById(m, focusProc.areaId)
+  if (area && !process) {
+    const inArea = processesInArea(m, area.id)
+    process = focusProc && focusProc.areaId === area.id ? focusProc : [...inArea].sort((a, b) => b.doc.nodes.length - a.doc.nodes.length)[0]
+  }
+  const level = node ? "step" : area && ctx.level !== "company" ? "stage" : "company"
+  return { level, area: level === "company" ? undefined : area, process: level === "company" ? undefined : process, node }
+}
+
+const isMapped = (m: Model, areaId: string) => processesInArea(m, areaId).some((p) => p.doc.nodes.length > 0)
+const actorOf = (p: Process, n: Node) => laneById(p.doc, n.lane)?.actor?.trim() || "someone"
+
+/** The first question for where the user is: the whole map, one stage, or one step. */
+export function contextualOpening(ctx: InterviewContext): string {
+  const m = ctx.model
+  const f = resolveFocus(ctx)
+  if (f.level === "step" && f.node && f.process) {
+    const doc = f.process.doc
+    const n = f.node
+    const next = doc.connections
+      .filter((c) => c.from === n.id && c.type !== "uses" && c.type !== "data")
+      .map((c) => doc.nodes.find((x) => x.id === c.to))
+      .find((x): x is Node => !!x)
+    if (next && next.lane !== n.lane) return `'${n.label}' is done by ${actorOf(f.process, n)}. How does the next person know it's ready?`
+    return `What happens right after '${n.label}'?`
+  }
+  if (f.level === "stage" && f.area) {
+    const steps = f.process ? outlineOrder(f.process.doc) : []
+    const last = steps[steps.length - 1]
+    if (!last || !f.process) return `We're in ${f.area.name}. What's the first thing that happens here, and who does it?`
+    return `We're in ${f.area.name}. After '${last.label}' by ${actorOf(f.process, last)}, what happens next?`
+  }
+  if (!m.areas.length) return OPENING_QUESTION
+  const main = [...m.areas].filter((a) => !a.side).sort((a, b) => a.order - b.order)
+  const mappedAny = m.areas.some((a) => isMapped(m, a.id))
+  if (!mappedAny) {
+    const company = DEFAULT_COMPANY_NAMES.has(m.company.name.trim().toLowerCase()) ? "your business" : m.company.name.trim()
+    return `We have the loop for ${company}: ${main.map((a) => a.name).join(" → ")}. Which stage do you want to talk through first?`
+  }
+  const gap = main.find((a) => !isMapped(m, a.id)) ?? m.areas.find((a) => !isMapped(m, a.id))
+  if (gap) return `${gap.name} isn't mapped yet. How does work usually arrive there?`
+  return "Every stage has a workflow. Which one do you want to go deeper on?"
+}
 
 /**
  * Default interviewer instructions. Users can override these per company from

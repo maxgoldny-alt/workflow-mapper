@@ -51,7 +51,7 @@ function orderedSteps(doc: Doc): Node[] {
   return out
 }
 
-function sopForProcess(m: Model, p: Process): string[] {
+export function sopForProcess(m: Model, p: Process): string[] {
   const lines: string[] = [`### ${p.name}`, ""]
   if (p.purpose) lines.push(`*Purpose:* ${p.purpose}`, "")
   const doc = p.doc

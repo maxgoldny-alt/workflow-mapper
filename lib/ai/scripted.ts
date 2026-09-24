@@ -1,6 +1,7 @@
 import type { Channel } from "@/lib/model"
 import type { InterviewContext, InterviewTurn, Interviewer } from "./provider"
-import { OPENING_QUESTION } from "./provider"
+import { OPENING_QUESTION, contextualOpening, resolveFocus } from "./provider"
+import { outlineOrder } from "@/lib/outline"
 import type { Op } from "./ops"
 
 /**
@@ -17,7 +18,10 @@ interface ChannelPlan {
 }
 
 interface State {
-  stage: "company" | "name" | "channels" | "system" | "platform" | "monitor" | "next" | "reentry" | "ready" | "exception" | "more" | "done"
+  stage: "company" | "name" | "channels" | "system" | "platform" | "monitor" | "next" | "reentry" | "ready" | "exception" | "more" | "done" | "stepWhat" | "stepWho"
+  /** Inside a stage: the step the user just described, waiting for who does it. */
+  pending?: string
+  pendingActor?: string
   area?: string
   process?: string
   customer: string
@@ -131,16 +135,71 @@ export function createScriptedInterviewer(): Interviewer {
     return `That covers every intake route you named. Is there another process to map next, or an exception path we skipped (rejected orders, missing information)?`
   }
 
+  /** Record the pending step described inside a stage, then ask how the work moves on. */
+  const recordStep = (ops: Op[], actor: string, system?: string): string => {
+    const label = s.pending || "Next step"
+    if (s.area) ops.push({ op: "ensureProcess", area: s.area, name: p() })
+    ops.push({ op: "ensureActor", name: actor })
+    if (system) ops.push({ op: "ensureSystem", name: system })
+    ops.push({ op: "addNode", process: p(), actor, label, system, after: s.lastStep, type: s.lastStep ? "step" : "trigger" })
+    if (s.lastStep) ops.push({ op: "connect", process: p(), from: s.lastStep, to: label, execution: "human" })
+    s.lastStep = label
+    s.actor = actor
+    s.pending = undefined
+    s.pendingActor = undefined
+    s.stage = "ready"
+    return `How does the next person or team know it's ready for them, and who is that?`
+  }
+
   return {
     name: "Scripted interviewer (no AI key configured)",
     async next(ctx: InterviewContext, userText: string | null): Promise<InterviewTurn> {
-      void ctx
       const ops: Op[] = []
-      if (userText === null) return { say: OPENING_QUESTION, ops }
+      if (userText === null) {
+        // Inside a stage or on a step: start there, following that stage's workflow
+        const f = resolveFocus(ctx)
+        if (f.level !== "company" && f.area) {
+          s.area = f.area.name
+          s.process = f.process?.name ?? f.area.name
+          s.channels = []
+          s.current = undefined
+          const order = f.process ? outlineOrder(f.process.doc) : []
+          const last = f.node ?? order[order.length - 1]
+          s.lastStep = last?.label
+          s.actor = last && f.process ? f.process.doc.lanes.find((l) => l.id === last.lane)?.actor : undefined
+          const say = contextualOpening(ctx)
+          // A step that hands off to another lane opens on the handoff question; anything else asks for the next step
+          s.stage = /know it's ready/.test(say) ? "ready" : "stepWhat"
+          return { say, ops }
+        }
+        return { say: OPENING_QUESTION, ops }
+      }
       const text = userText.trim()
       const unknown = DONT_KNOW.test(text)
 
       switch (s.stage) {
+        case "stepWhat": {
+          if (unknown) {
+            ops.push({ op: "addQuestion", text: `What happens ${s.lastStep ? `after "${s.lastStep}"` : "first"} in ${s.area ?? p()}?`, area: s.area, process: p() })
+            s.stage = "more"
+            return { say: `Left as an open question. Is there another stage or process to map next?`, ops }
+          }
+          s.pending = cap(clean(text)).slice(0, 60)
+          const actor = extractActor(text)
+          const system = extractSystems(text)[0]?.name
+          if (actor && system) return { say: recordStep(ops, actor, system), ops }
+          s.pendingActor = actor
+          s.stage = "stepWho"
+          return { say: `Who does that, and in which system?`, ops }
+        }
+
+        case "stepWho": {
+          const actor = extractActor(text) ?? s.pendingActor ?? s.actor ?? "Unknown actor"
+          const system = unknown ? undefined : extractSystems(text)[0]?.name
+          if (unknown) ops.push({ op: "addQuestion", text: `Who does "${s.pending ?? "that step"}" in ${p()}, and in which system?`, process: p() })
+          return { say: recordStep(ops, actor, system), ops }
+        }
+
         case "company": {
           const m = text.match(/^(?:we(?:'re| are)\s+|this is\s+|it'?s\s+)?([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,3})/)
           const name = m?.[1]?.trim()

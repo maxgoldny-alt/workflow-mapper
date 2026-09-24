@@ -132,3 +132,37 @@ export function loopModel(type: BusinessType, companyName = "New company"): Mode
   m.areaLinks = links
   return m
 }
+
+/** Keyword hints per business type, checked in this order before the type ids and labels. */
+const TYPE_KEYWORDS: [BusinessType, string[]][] = [
+  ["ecommerce", ["ecommerce", "e-commerce", "online", "shop", "webstore", "web store", "dtc"]],
+  ["manufacturing", ["manufactur", "distribut", "warehouse", "wholesale", "fabricat", "factory"]],
+  ["restaurant", ["restaurant", "food", "cafe", "café", "bakery", "catering"]],
+  ["retail", ["retail", "store", "boutique"]],
+  ["service", ["service", "contractor", "plumb", "hvac", "landscap", "cleaning", "repair", "agency", "consult"]],
+]
+
+/** The business type a free-text industry label most likely means; "custom" when nothing fits. */
+export function businessTypeFor(industry?: string) {
+  const t = (industry ?? "").trim().toLowerCase()
+  const custom = businessType("custom")
+  if (!t) return custom
+  for (const [id, words] of TYPE_KEYWORDS) if (words.some((w) => t.includes(w))) return businessType(id)
+  const hit = BUSINESS_TYPES.find((b) => b.id !== "custom" && (t.includes(b.id) || b.label.toLowerCase().includes(t) || t.includes(b.label.toLowerCase())))
+  return hit ?? custom
+}
+
+/** Typical stage names for a business, from its free-text industry label. */
+export function stageVocabularyFor(industry?: string): string[] {
+  return businessTypeFor(industry).stages.map((st) => st.name)
+}
+
+/** The stage starter (any business type) whose name matches, case-insensitively. */
+export function stageStarterByName(name: string): StageStarter | undefined {
+  const t = name.trim().toLowerCase()
+  for (const b of BUSINESS_TYPES) {
+    const hit = b.stages.find((st) => st.name.toLowerCase() === t)
+    if (hit) return hit
+  }
+  return undefined
+}

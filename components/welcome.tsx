@@ -62,20 +62,20 @@ export function Welcome({ onStart, onExploreSample, onClose }: WelcomeProps) {
           <X className="h-4 w-4" />
         </button>
 
-        <h2 className="text-lg font-semibold">Map the full business loop first. Then drill into each part.</h2>
+        <h2 className="text-lg font-semibold">A clean map of how your business actually runs, end to end.</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Start with the whole operating cycle on one screen: where customers come from, how work comes in, gets done, gets paid, and comes back. Open any stage to map who does what, in which system, and where it gets handed off.
+          Not how it should run. How it runs today, dysfunction included. Start with the whole loop on one screen, then open any stage and talk through it. The map builds itself; the AI asks what an operations analyst would ask.
         </p>
 
         <ol className="mt-5 space-y-3">
-          <Step icon={MessageSquareText} color="#4f46e5" title="Tell it what happens">
-            One question at a time. “I don’t know” is a valid answer; it becomes an open question instead of a guess.
+          <Step icon={Rows3} color="#0891b2" title="The loop first">
+            Every stage of the business on one screen: where customers come from, how work comes in, gets done, gets paid, comes back. Stages you have not mapped yet show what is typical for your kind of business.
           </Step>
-          <Step icon={Rows3} color="#0891b2" title="Loop first, workflows second">
-            The loop shows only the big picture. Open a stage to map the detailed workflow in swimlanes.
+          <Step icon={MessageSquareText} color="#4f46e5" title="Talk through each stage">
+            Open a stage and describe it, or type the steps straight in. Who does it, in which system, how the next person knows it is ready. Steps, diagram, SOP, and data flow are the same facts, four ways.
           </Step>
-          <Step icon={Shuffle} color="#dc2626" title="Handoffs record how work moves today">
-            Channel, person or system, integration state, trigger, and what data moves. Issues are observations, not recommendations.
+          <Step icon={Shuffle} color="#dc2626" title="See what the map shows">
+            Manual handoffs, re-entered data, one-person dependencies, open questions. Hand the SOP to a consultant or an automation builder when you are ready.
           </Step>
         </ol>
 
