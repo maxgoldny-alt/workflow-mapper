@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Mic, MicOff, Send, Volume2, VolumeX, X, Loader2, Square, RotateCcw } from "lucide-react"
+import { Mic, MicOff, Send, Volume2, VolumeX, X, Loader2, Square, RotateCcw, SlidersHorizontal } from "lucide-react"
+import { INTERVIEWER_RULES } from "@/lib/ai/provider"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { InterviewMessage, Model } from "@/lib/model"
@@ -16,6 +17,8 @@ interface InterviewPanelProps {
   onStart: () => void
   onReset: () => void
   onClose: () => void
+  /** Save user-edited interviewer instructions (empty string restores the default). */
+  onInstructions: (text: string) => void
 }
 
 /**
@@ -23,8 +26,10 @@ interface InterviewPanelProps {
  * answers and optional read-aloud for questions. Everything voice goes through
  * `lib/voice`, so the provider can change without touching this file.
  */
-export function InterviewPanel({ model, busy, providerName, error, onSend, onStart, onReset, onClose }: InterviewPanelProps) {
+export function InterviewPanel({ model, busy, providerName, error, onSend, onStart, onReset, onClose, onInstructions }: InterviewPanelProps) {
   const messages = model.interview.messages
+  const [tuning, setTuning] = useState(false)
+  const [rulesDraft, setRulesDraft] = useState(model.interview.instructions ?? INTERVIEWER_RULES)
   const [draft, setDraft] = useState("")
   const [voiceMode, setVoiceMode] = useState(false)
   const [listening, setListening] = useState(false)
@@ -144,6 +149,17 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
         <h2 className="text-sm font-semibold">AI interview</h2>
         <span className="truncate text-[11px] text-muted-foreground" title={providerName}>{providerName}</span>
         <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setRulesDraft(model.interview.instructions ?? INTERVIEWER_RULES)
+              setTuning((t) => !t)
+            }}
+            title="Tune the interviewer: edit the instructions sent with every turn"
+            className={cn("rounded p-1 hover:bg-muted hover:text-foreground", tuning ? "text-primary" : "text-muted-foreground", model.interview.instructions && "text-amber-600")}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </button>
           <button type="button" onClick={onReset} title="Start over (clears the transcript, keeps the map)" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <RotateCcw className="h-3.5 w-3.5" />
           </button>
@@ -153,7 +169,25 @@ export function InterviewPanel({ model, busy, providerName, error, onSend, onSta
         </div>
       </div>
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-auto px-3 py-3">
+      {tuning && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 border-b border-border p-3">
+          <p className="text-xs text-muted-foreground">
+            These instructions go to the model on every turn, before the current map and the conversation. Edit them to change how it asks, what it insists on, and what it records. {model.interview.instructions ? "Custom instructions are active." : "Showing the default."}
+          </p>
+          <textarea
+            value={rulesDraft}
+            onChange={(e) => setRulesDraft(e.target.value)}
+            className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background p-2 font-mono text-[11px] leading-relaxed outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => { onInstructions(rulesDraft.trim() === INTERVIEWER_RULES.trim() ? "" : rulesDraft); setTuning(false) }}>Save</Button>
+            <Button size="sm" variant="outline" onClick={() => setRulesDraft(INTERVIEWER_RULES)}>Reset to default</Button>
+            <Button size="sm" variant="ghost" onClick={() => setTuning(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      <div ref={listRef} className={cn("min-h-0 flex-1 space-y-3 overflow-auto px-3 py-3", tuning && "hidden")}>
         {messages.map((m) => (
           <Bubble key={m.id} m={m} />
         ))}

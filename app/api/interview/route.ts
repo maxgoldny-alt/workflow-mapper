@@ -78,6 +78,30 @@ const TURN_TOOL: Anthropic.Tool = {
   },
 }
 
+/** Per-op schemas so a schema-constrained model only sees the fields that op uses. */
+const P = OP_SCHEMA.properties
+const opVariant = (op: string, required: string[], fields: string[]) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["op", ...required],
+  properties: { op: { type: "string", enum: [op] }, ...Object.fromEntries([...required, ...fields].map((f) => [f, P[f as keyof typeof P]])) },
+})
+const OP_VARIANTS = [
+  opVariant("ensureArea", ["name"], ["purpose", "inputs", "outputs"]),
+  opVariant("ensureProcess", ["area", "name"], ["purpose"]),
+  opVariant("ensureActor", ["name"], ["kind", "notes", "verification"]),
+  opVariant("ensurePlatform", ["name"], ["vendor", "category"]),
+  opVariant("ensureSystem", ["name"], ["platform", "kind", "accountType", "owner", "purpose", "dataIn", "dataOut", "integration", "verification"]),
+  opVariant("ensureDataObject", ["name"], ["kind", "format"]),
+  opVariant("addNode", ["process", "actor", "label"], ["type", "sublabel", "system", "dataIn", "dataOut", "after", "notes", "verification"]),
+  opVariant("connect", ["process", "from", "to"], ["type", "label", "channel", "execution", "integration", "triggerKind", "trigger", "payload", "dataObjects", "verification"]),
+  opVariant("link", ["fromArea", "toArea"], ["label", "payload", "channel", "execution", "verification"]),
+  opVariant("addQuestion", ["text"], ["area", "process", "node"]),
+  opVariant("answerQuestion", ["text", "answer"], []),
+  opVariant("note", ["process", "node", "notes"], []),
+  opVariant("frame", ["process", "name", "steps"], []),
+]
+
 /** Turn shape for Base44's InvokeLLM. Only `op` is declared per item: listing every
  * optional field makes schema-constrained models pad all of them with filler. The
  * fields themselves are described in OPS_GUIDE. */
@@ -89,7 +113,7 @@ const TURN_SCHEMA = {
     ops: {
       type: "array",
       description: "Model operations for facts in the user's latest message. Each item has `op` plus only the fields you know.",
-      items: OP_SCHEMA,
+      items: { anyOf: OP_VARIANTS },
     },
   },
 } as const
@@ -110,7 +134,8 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 - frame {process, name, steps: [step labels]}  — group steps into a named phase ("Order entry", "Shipping") once a phase is clear
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
-type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string }
+type InterviewBody = { messages: { role: "ai" | "user"; text: string }[]; modelSummary: string; userText: string | null; focus?: string; instructions?: string }
+
 
 const FILLER = new Set(["unknown", "n/a", "none", "null", "undefined", "", "-", "not specified", "not provided", "not applicable"])
 
@@ -179,7 +204,8 @@ async function base44Turn(body: InterviewBody, appId: string) {
   if (body.userText !== null) transcript.push(`User: ${body.userText}`)
   if (!transcript.length || body.messages[0]?.role === "ai") transcript.unshift("User: (Start the interview.)")
 
-  const prompt = `${INTERVIEWER_RULES}
+  const rules = body.instructions?.trim() || INTERVIEWER_RULES
+  const prompt = `${rules}
 
 ${OPS_GUIDE}
 
@@ -206,7 +232,7 @@ Output rules for ops:
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
     const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
-    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · model not disclosed by Base44` })
+    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
@@ -240,7 +266,7 @@ export async function POST(req: Request) {
   if (history[0].role !== "user") history.unshift({ role: "user", content: "(Start the interview.)" })
 
   const system: Anthropic.TextBlockParam[] = [
-    { type: "text", text: `${INTERVIEWER_RULES}\n\n${OPS_GUIDE}\n\nOpening question if the model is empty and nothing has been said: "${OPENING_QUESTION}"`, cache_control: { type: "ephemeral" } },
+    { type: "text", text: `${body.instructions?.trim() || INTERVIEWER_RULES}\n\n${OPS_GUIDE}\n\nOpening question if the model is empty and nothing has been said: "${OPENING_QUESTION}"`, cache_control: { type: "ephemeral" } },
     { type: "text", text: `Current model (JSON):\n${body.modelSummary}${body.focus ? `\n\nThe process currently being mapped: "${body.focus}". Put new steps there unless the user clearly moves on.` : ""}` },
   ]
 

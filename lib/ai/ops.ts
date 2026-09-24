@@ -95,7 +95,8 @@ export interface ApplyResult {
   derived: string[]
 }
 
-const norm = (s: string) => s.trim().toLowerCase()
+/** Case, spacing and punctuation insensitive: "Sales Person" and "salesperson" are one actor. */
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "")
 const same = (a: string, b: string) => norm(a) === norm(b)
 const loose = (a: string, b: string) => same(a, b) || norm(a).includes(norm(b)) || norm(b).includes(norm(a))
 
@@ -295,7 +296,22 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
             break
           }
           const from = findNode(p, op.from)
-          const to = findNode(p, op.to)
+          let to = findNode(p, op.to)
+          // Models often name the receiving actor instead of a step ("→ Warehouse"): give that actor a receiving step
+          if (from && !to) {
+            const actor = m.actors.find((a) => same(a.name, op.to)) ?? p.doc.lanes.find((l) => same(l.actor, op.to))
+            if (actor) {
+              const name = "name" in actor ? actor.name : actor.actor
+              const lane = ensureLane(p, name)
+              const boxes = laneBoxes(p.doc.lanes)
+              const box = boxes.find((b) => b.id === lane.id)!
+              const node: Node = { id: newId("step"), label: `Receives ${op.payload ?? "the work"}`, type: "step", x: from.x + NODE_W + 48, y: box.top + (box.height - NODE_H) / 2, lane: lane.id, verification: "inferred", messageId }
+              p.doc.nodes.push(clampNodeToLane(p.doc.lanes, node))
+              touched.add(p.id)
+              derived.push(`+ Step "${node.label}" (${name}) [inferred]`)
+              to = node
+            }
+          }
           if (!from || !to) {
             derived.push(`! skipped connect: "${op.from}" → "${op.to}" not found`)
             break

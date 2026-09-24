@@ -307,7 +307,7 @@ export interface Model {
   systems: SystemInstance[]
   dataObjects: DataObject[]
   questions: Question[]
-  interview: { messages: InterviewMessage[]; focusProcessId?: string }
+  interview: { messages: InterviewMessage[]; focusProcessId?: string; instructions?: string }
 }
 
 export interface Workspace {

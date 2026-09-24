@@ -20,6 +20,7 @@ export const claudeInterviewer: Interviewer = {
       body: JSON.stringify({
         messages: ctx.messages.map((m) => ({ role: m.role, text: m.text })),
         modelSummary: summarizeModel(ctx.model),
+        instructions: ctx.instructions,
         userText,
         focus,
       }),

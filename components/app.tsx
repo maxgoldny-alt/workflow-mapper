@@ -128,7 +128,7 @@ export default function App() {
       const userMsg = userText !== null ? { id: newId("m"), role: "user" as const, text: userText, at: Date.now() } : null
       if (userMsg) commit((m) => ({ ...m, interview: { ...m.interview, messages: [...m.interview.messages, userMsg] } }))
       const baseModel = userMsg ? { ...model, interview: { ...model.interview, messages: [...model.interview.messages, userMsg] } } : model
-      const ctx = { model: baseModel, messages: baseModel.interview.messages, focusProcessId: nav.level === "process" ? nav.processId : baseModel.interview.focusProcessId }
+      const ctx = { model: baseModel, messages: baseModel.interview.messages, focusProcessId: nav.level === "process" ? nav.processId : baseModel.interview.focusProcessId, instructions: baseModel.interview.instructions }
 
       let turn
       const t0 = Date.now()
@@ -330,7 +330,17 @@ export default function App() {
         {showInspector && <Inspector selection={selection} model={model} processId={inspectorProcessId} commit={commit} onNavigate={navigate} onClose={() => setSelection(null)} />}
 
         {drawerOpen && (
-          <InterviewPanel model={model} busy={busy} providerName={providerName} error={aiError} onSend={(t) => runTurn(t)} onStart={() => runTurn(null)} onReset={resetInterview} onClose={() => setDrawerOpen(false)} />
+          <InterviewPanel
+            model={model}
+            busy={busy}
+            providerName={providerName}
+            error={aiError}
+            onSend={(t) => runTurn(t)}
+            onStart={() => runTurn(null)}
+            onReset={resetInterview}
+            onClose={() => setDrawerOpen(false)}
+            onInstructions={(text) => commit((m) => ({ ...m, interview: { ...m.interview, instructions: text || undefined } }), false)}
+          />
         )}
 
         {showWelcome && (
