@@ -181,7 +181,7 @@ export default function App() {
 
   const createWorkspace = (templateId?: string) => {
     const t = templateId ? getTemplateById(templateId) : undefined
-    const ws = t ? workspaceFromTemplate(t) : workspaceFromTemplate(getTemplateById("empty")!, `Company ${workspaces.length + 1}`)
+    const ws = t ? workspaceFromTemplate(t) : workspaceFromTemplate(getTemplateById("empty")!, "New company")
     setWorkspaces((all) => [...all, ws])
     setActiveId(ws.id)
     history.reset()

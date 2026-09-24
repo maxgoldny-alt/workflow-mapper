@@ -89,6 +89,7 @@ export type Op =
   | { op: "answerQuestion"; text: string; answer: string }
   | { op: "note"; process: string; node: string; notes: string }
   | { op: "frame"; process: string; name: string; steps: string[] }
+  | { op: "setCompany"; name?: string; industry?: string; description?: string }
 
 export interface ApplyResult {
   model: Model
@@ -244,7 +245,12 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
         case "addNode": {
           const p = findProcess(op.process) ?? ensureProcess(m.areas[0]?.name ?? op.process, op.process)
           const lane = ensureLane(p, op.actor)
-          const existing = findNode(p, op.label)
+          let existing = findNode(p, op.label)
+          // Intake triggers: "Email order arrives" and "Email order sent" are the same trigger
+          if (!existing && op.type === "trigger") {
+            const kw = /\b(email|web|website|online|phone|call|text|sms|fax|walk-?in|edi|api)\b/i.exec(op.label)?.[1]?.toLowerCase()
+            if (kw) existing = p.doc.nodes.find((n) => n.type === "trigger" && n.lane === lane.id && n.label.toLowerCase().includes(kw === "call" ? "phone" : kw === "online" || kw === "website" ? "web" : kw))
+          }
           const systemId = op.system ? (findSystem(op.system) ?? (() => {
             const s = { id: newId("sys"), name: op.system!.trim(), kind: "unknown" as SystemKind, integration: "unknown" as IntegrationState, verification: ver(op.verification) }
             m.systems.push(s)
@@ -383,6 +389,16 @@ export function applyOps(model: Model, ops: Op[], messageId?: string): ApplyResu
           }
           break
         }
+        case "setCompany": {
+          const before = m.company.name
+          // Models sometimes append a slug or tagline to the name: keep the proper-name part only
+          const cleanName = op.name?.trim().replace(/\s+\S+-\S+-\S+.*$/, "").replace(/\s*[,:(].*$/, "").trim().slice(0, 60)
+          if (cleanName) m.company.name = cleanName
+          if (op.industry?.trim()) m.company.industry = op.industry.trim()
+          if (op.description?.trim()) m.company.description = op.description.trim()
+          derived.push(`~ Company: ${m.company.name}${m.company.industry ? ` · ${m.company.industry}` : ""}${before !== m.company.name ? ` (was "${before}")` : ""}`)
+          break
+        }
         case "frame": {
           const p = findProcess(op.process)
           if (!p) break
@@ -447,6 +463,8 @@ export function summarizeModel(m: Model): string {
   return JSON.stringify(
     {
       company: m.company.name,
+      industry: m.company.industry,
+      business: m.company.description,
       areas,
       links: m.areaLinks.map((l) => ({ from: m.areas.find((a) => a.id === l.from)?.name, to: m.areas.find((a) => a.id === l.to)?.name, label: l.label, payload: l.payload })),
       actors: m.actors.map((a) => ({ name: a.name, kind: a.kind })),

@@ -298,7 +298,7 @@ export interface InterviewMessage {
 
 export interface Model {
   version: 5
-  company: { name: string }
+  company: { name: string; industry?: string; description?: string }
   areas: ProcessArea[]
   areaLinks: AreaLink[]
   processes: Process[]

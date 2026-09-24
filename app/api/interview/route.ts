@@ -20,7 +20,7 @@ const OP_SCHEMA = {
   properties: {
     op: {
       type: "string",
-      enum: ["ensureArea", "ensureProcess", "ensureActor", "ensurePlatform", "ensureSystem", "ensureDataObject", "addNode", "connect", "link", "addQuestion", "answerQuestion", "note", "frame"],
+      enum: ["ensureArea", "ensureProcess", "ensureActor", "ensurePlatform", "ensureSystem", "ensureDataObject", "addNode", "connect", "link", "addQuestion", "answerQuestion", "note", "frame", "setCompany"],
     },
     name: { type: "string" },
     area: { type: "string" },
@@ -60,6 +60,8 @@ const OP_SCHEMA = {
     node: { type: "string" },
     verification: { type: "string", enum: ["reported", "inferred"] },
     steps: { type: "array", items: { type: "string" } },
+    industry: { type: "string" },
+    description: { type: "string" },
   },
 } as const
 
@@ -100,6 +102,7 @@ const OP_VARIANTS = [
   opVariant("answerQuestion", ["text", "answer"], []),
   opVariant("note", ["process", "node", "notes"], []),
   opVariant("frame", ["process", "name", "steps"], []),
+  opVariant("setCompany", [], ["name", "industry", "description"]),
 ]
 
 /** Turn shape for Base44's InvokeLLM. Only `op` is declared per item: listing every
@@ -131,6 +134,7 @@ const OPS_GUIDE = `Op reference (all name-based, case-insensitive; missing thing
 - addQuestion {text, area?, process?, node?}
 - answerQuestion {text (existing question), answer}
 - note {process, node, notes}
+- setCompany {name?, industry?, description?}  — from the first answer about the business
 - frame {process, name, steps: [step labels]}  — group steps into a named phase ("Order entry", "Shipping") once a phase is clear
 Channels: email, phone, sms, website, web-form, slack, teams, whatsapp, chat, spreadsheet, csv, paper, api, system, in-person, other, unknown.`
 
@@ -170,13 +174,31 @@ function stripFiller(op: unknown): Record<string, unknown> | null {
 
 /** Keep the overview to one area per mapped process: once an area exists, redirect
  * new area names onto it instead of letting each turn invent "Sales", "Order Management"… */
-function foldAreas(ops: Record<string, unknown>[], modelSummary: string): Record<string, unknown>[] {
+function foldAreas(ops: Record<string, unknown>[], modelSummary: string, userText: string | null): Record<string, unknown>[] {
   let existing: string[] = []
+  let processes: string[] = []
   try {
-    const m = JSON.parse(modelSummary) as { areas?: { area?: string }[] }
+    const m = JSON.parse(modelSummary) as { areas?: { area?: string; processes?: { process?: string }[] }[] }
     existing = (m.areas ?? []).map((a) => String(a.area ?? "")).filter(Boolean)
+    processes = (m.areas ?? []).flatMap((a) => (a.processes ?? []).map((p) => String(p.process ?? ""))).filter(Boolean)
   } catch {
     /* summary not JSON: no folding */
+  }
+  // A new process is only real when the user's own words asked for it; suggestions the model
+  // made ("order intake or onboarding?") must not become empty processes.
+  const said = (userText ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ")
+  const mentioned = (name: string) => {
+    const words = name.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 3)
+    return words.length > 0 && words.filter((w) => said.includes(w)).length >= Math.min(2, words.length)
+  }
+  const knownProc = new Set(processes.map((p) => p.toLowerCase()))
+  const focus = processes[processes.length - 1]
+  ops = ops.filter((o) => !(o.op === "ensureProcess" && typeof o.name === "string" && !knownProc.has(o.name.toLowerCase()) && processes.length > 0 && !mentioned(o.name)))
+  if (focus) {
+    const allowed = new Set([...knownProc, ...ops.filter((o) => o.op === "ensureProcess" && typeof o.name === "string").map((o) => (o.name as string).toLowerCase())])
+    for (const o of ops) {
+      if (typeof o.process === "string" && !allowed.has(o.process.toLowerCase()) && !processes.some((p) => p.toLowerCase().includes(o.process!.toString().toLowerCase()) || o.process!.toString().toLowerCase().includes(p.toLowerCase()))) o.process = focus
+    }
   }
   const known = new Set(existing.map((a) => a.toLowerCase()))
   const firstNew = ops.find((o) => o.op === "ensureArea" && typeof o.name === "string")
@@ -232,7 +254,7 @@ Output rules for ops:
     const data = typeof raw === "string" ? (JSON.parse(raw) as { say?: unknown; ops?: unknown }) : (raw as { say?: unknown; ops?: unknown })
     if (!data || typeof data.say !== "string") return NextResponse.json({ error: "bad_response" }, { status: 502 })
     const cleaned = Array.isArray(data.ops) ? data.ops.map(stripFiller).filter((o): o is Record<string, unknown> => !!o) : []
-    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
+    return NextResponse.json({ say: data.say, ops: foldAreas(cleaned, body.modelSummary, body.userText), provider: "Base44", providerDetail: `Base44 InvokeLLM · app ${appId.slice(-6)} · Gemini (per Base44 error format)` })
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 })

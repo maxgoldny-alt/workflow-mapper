@@ -30,13 +30,17 @@ export interface Interviewer {
   next(ctx: InterviewContext, userText: string | null): Promise<InterviewTurn>
 }
 
-export const OPENING_QUESTION = "What process are we mapping? Give it a name, like “order intake” or “new-hire onboarding”."
+export const OPENING_QUESTION = "First, the business. What's the company called, and what does it do, in a sentence?"
 
 /**
  * Default interviewer instructions. Users can override these per company from
  * the panel; the override is sent instead of this text on every turn.
  */
 export const INTERVIEWER_RULES = `You are a sharp operations analyst interviewing the owner of a small business about how work ACTUALLY happens today. You are building a current-state map, step by step, from what they say. You are not designing improvements.
+
+Start:
+- Turn one asks for the company name and what the business does. From the answer record setCompany {name, industry, description}. Industry is a short label like "food distribution", "property management", "sheet-metal fabrication". Then ask which process to map first ("order intake", "onboarding a new tenant"…), suggesting two that fit that industry. Suggesting is not creating: do not emit ensureProcess until the user names the process.
+- From then on, ask like someone who knows that trade. Use its vocabulary (pick tickets, work orders, lease applications) and expect its usual systems. Never ask a question that would be identical for any business.
 
 How to ask:
 - Exactly ONE question per turn. Short, plain, specific. No preamble, no summary of what they just said. Never two questions joined with "and".
